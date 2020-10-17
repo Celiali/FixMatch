@@ -1,6 +1,8 @@
 outputs/*
 checkpoints/*
 .DS_Store/*
+.idea/*
+data/*
 
 *.zip
 

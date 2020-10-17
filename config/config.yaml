@@ -1,0 +1,26 @@
+DATASET:
+  project_dir: '/Users/cil/Documents/DL_advanced/FixMatch'
+  data_dir: '/Users/cil/Documents/DL_advanced/FixMatch/data'
+  dataset: 'CIFAR10'
+  strongaugment: 'RA'  #'CTA'
+  label_num: 4000
+
+#MODEL:
+#  name: ''
+#  data_shape :
+#  latent_dim :
+#  hidden_dims:
+#  input_type:
+#
+#EXPERIMENT:
+#  name:
+#  used_gpu: 0
+#  data_path: ''
+#  out_model: ''
+#  log_path: ''
+#  batch_size:
+#  LR:
+#  weight_decay:
+#  scheduler_gamma:
+#  n_epoch:
+#  save_every:

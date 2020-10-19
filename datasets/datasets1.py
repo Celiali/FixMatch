@@ -11,7 +11,7 @@ from torchvision import datasets
 from torchvision import transforms as T
 from torchvision.datasets.cifar import CIFAR100
 
-from augmentations.randaugment import RandAugmentMC
+from augmentations.randaugment import RandAugment
 from augmentations.ctaugment import *
 
 
@@ -28,8 +28,8 @@ TRANSFORM_CIFAR = {
 }
 
 STRONG_AUG = {
-    'RA': RandAugmentMC(n=2, m=10),
-    'CTA': CTAugment()
+    'RA': RandAugment(n=2, m=10),
+    # 'CTA': CTAugment()
 }
 
 

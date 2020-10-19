@@ -11,6 +11,7 @@ from torch.utils.data import Dataset
 import torchvision
 from torchvision import transforms
 
+from augmentations import randaugment
 
 TRANSFORM_CIFAR = {
     'CIFAR10':
@@ -53,6 +54,8 @@ class LoadDataset(object):
         transform = transforms.Compose([
             # you can add other transformations in this list
             transforms.ToTensor(),
+            transforms.Normalize(mean=TRANSFORM_CIFAR[self.params.dataset]['mean'],
+                                 std=TRANSFORM_CIFAR[self.params.dataset]['std'])
         ])
         if self.params.dataset == 'CIFAR10':
             downloadFlag = not os.path.exists(os.path.join(self.datapath,'cifar-10-batches-py'))
@@ -64,7 +67,6 @@ class LoadDataset(object):
             testset = torchvision.datasets.CIFAR100(root=self.datapath, train=False, transform=transform,download=downloadFlag)
 
         return trainset,testset
-
 
 
 if __name__ == '__main__':
@@ -86,6 +88,7 @@ if __name__ == '__main__':
                                               shuffle=True, num_workers=4)
     testloader = torch.utils.data.DataLoader(testset, batch_size=1,
                                              shuffle=False, num_workers=4)
+    print(len(trainset)) #print(len(trainloader))
 
     batchdata = next(iter(trainloader))
     print(batchdata[0])
@@ -96,3 +99,4 @@ if __name__ == '__main__':
     a = x[0][:]
     plt.imshow(a.permute(1,2,0))
     plt.show()
+    plt.imsave('./test.png',a.permute(1,2,0).numpy())

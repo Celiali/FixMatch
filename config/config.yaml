@@ -1,26 +1,34 @@
 DATASET:
-  project_dir: '/Users/cil/Documents/DL_advanced/FixMatch'
-  data_dir: '/Users/cil/Documents/DL_advanced/FixMatch/data'
+  project_dir: './'
+  data_dir: '/Users/cil/Documents/DL_advanced/FixMatch/data/'
   dataset: 'CIFAR10'
   strongaugment: 'RA'  #'CTA'
   label_num: 4000
 
-#MODEL:
-#  name: ''
-#  data_shape :
-#  latent_dim :
-#  hidden_dims:
-#  input_type:
-#
-#EXPERIMENT:
-#  name:
-#  used_gpu: 0
-#  data_path: ''
-#  out_model: ''
-#  log_path: ''
-#  batch_size:
-#  LR:
-#  weight_decay:
-#  scheduler_gamma:
-#  n_epoch:
-#  save_every:
+MODEL:
+  name: 'WideResnet'
+  depth: 28
+  widen_factor: 2
+  num_classes: 10
+  dropout: 0.0
+
+EXPERIMENT:
+  name: 'FMTrainer'
+  out_model: './checkpoints/'
+  log_path: './outputs/exp1'
+  used_gpu: True
+
+  optim_lr: 0.03
+  optim_momentum: 0.9
+  used_nesterov: True
+
+  batch_size: 64
+  epoch_n: 1024
+  save_every: 50
+
+  resume: False
+  resume_checkpoints: './checkpoints/xx.pth'
+
+Logging:
+  name: "FM"
+  seed: 1265

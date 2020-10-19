@@ -1,5 +1,7 @@
 import logging
 import os
+import sys
+sys.path.append(os.getcwd())
 
 import numpy as np
 import ignite.distributed as idist
@@ -8,8 +10,6 @@ from torch.utils.data import Dataset, SequentialSampler
 from torchvision import datasets
 from torchvision import transforms as T
 from torchvision.datasets.cifar import CIFAR100
-import sys
-sys.path.append(os.getcwd())
 
 from augmentations.randaugment import RandAugmentMC
 from augmentations.ctaugment import *
@@ -38,6 +38,7 @@ class LoadDataset(object):
         self.params = params
         self.datapath = self.params.data_dir
         self.name = params.dataset  # dataset name
+        self.strongaugment = STRONG_AUG[params.strongaugment]
         self.loader = {}
 
         assert self.name in ['CIFAR10', 'CIFAR100'], f"[!] Dataset Name is wrong, \
@@ -56,13 +57,13 @@ class LoadDataset(object):
         self.unlabeled_transform = TransformFix(
             mean=TRANSFORM_CIFAR[self.name]['mean'],
             std=TRANSFORM_CIFAR[self.name]['std'],
-            strong_aug_method=STRONG_AUG[params.strongaugment])
+            strong_aug_method=self.strongaugment)
 
         self.transform_test = T.Compose([
             T.ToTensor(),
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
                         std=TRANSFORM_CIFAR[self.name]['std'],)])
-        self.get_dataset()
+        # self.get_dataset()
 
     def get_dataset(self):
         data_dir = os.path.join(hydra.utils.get_original_cwd(), self.datapath, 'cifar-%s-batches-py' % self.name[5:])
@@ -82,16 +83,16 @@ class LoadDataset(object):
         labeled_idx, unlabeled_idx = self.sampling(self.params.num_expand_x, trainset)
 
         # apply transforms
-        train_sup_dataset, train_unsup_dataset = self.apply_transform(labeled_idx, unlabeled_idx, trainset)
+        return self.apply_transform(labeled_idx, unlabeled_idx, trainset), testset
 
-        self.get_dataloader(train_sup_dataset, train_unsup_dataset, testset)
+        # self.get_dataloader(train_sup_dataset, train_unsup_dataset, testset)
 
-    def sampling(self, num_expand_x, trainset):
+    def sampling(self, num_expand_x, trainset): # num_expand_x: 2^16 #expected total number of labeled training samples
         num_per_class = self.params.label_num // self.num_classes
         labels = np.array(trainset.targets)
 
         # sample labeled
-        categorized_idx = [list(np.where(labels == i)[0]) for i in range(self.num_classes)]
+        categorized_idx = [list(np.where(labels == i)[0]) for i in range(self.num_classes)] #[[], [],]
         labeled_idx = [idx for idxs in categorized_idx 
                             for idx in np.random.choice(idxs, num_per_class)]
 
@@ -100,7 +101,7 @@ class LoadDataset(object):
         exapand_unlabled = num_expand_x * self.params.mu // labels.size
 
         labeled_idx = labeled_idx * exapand_labeled
-        unlabeled_idx = list(np.arange(labels.size)) * exapand_unlabled
+        unlabeled_idx = list(np.arange(labels.size)) * exapand_unlabled # 
 
         if len(labeled_idx) < num_expand_x:
             diff = num_expand_x - len(labeled_idx)
@@ -131,7 +132,9 @@ class LoadDataset(object):
             transform=self.unlabeled_transform) 
         return train_sup_dataset, train_unsup_dataset
 
-    def get_dataloader(self, train_sup_dataset, train_unsup_dataset, testset):
+    def get_dataloader(self):
+        (train_sup_dataset, train_unsup_dataset), testset = self.get_dataset()
+
         self.loader['labeled'] = idist.auto_dataloader(
             train_sup_dataset,
             # sampler=train_sampler(labeled_dataset),
@@ -156,6 +159,7 @@ class LoadDataset(object):
             sampler=SequentialSampler(testset),
             batch_size=self.params.batch_size,
             num_workers=self.params.num_workers)
+        return self.loader
 
 
 class TransformFix(object):
@@ -216,6 +220,7 @@ if __name__ == '__main__':
         print(f"Current working directory : {os.getcwd()}")
         print(f"Orig working directory    : {hydra.utils.get_original_cwd()}")
         data = LoadDataset(cfg.DATASET)
+        data.get_dataloader()
         for i, (name, loader) in enumerate(data.loader.items()):
             img_batch, _ = next(iter(loader))
             if isinstance(img_batch, list):

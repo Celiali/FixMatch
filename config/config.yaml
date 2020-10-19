@@ -17,15 +17,16 @@ DATASET:
 #  hidden_dims:
 #  input_type:
 #
-#EXPERIMENT:
-#  name:
-#  used_gpu: 0
-#  data_path: ''
-#  out_model: ''
-#  log_path: ''
-#  batch_size:
-#  LR:
-#  weight_decay:
-#  scheduler_gamma:
-#  n_epoch:
-#  save_every:
+EXPERIMENT:
+  name:
+  used_gpu: 0
+  data_path: ''
+  out_model: ''
+  log_path: ''
+  batch_size:
+  LR:
+  weight_decay:
+  scheduler_gamma:
+  n_epoch:
+  save_every:
+  validate_every: 2

@@ -1,9 +1,14 @@
 DATASET:
   project_dir: '/Users/cil/Documents/DL_advanced/FixMatch'
-  data_dir: '/Users/cil/Documents/DL_advanced/FixMatch/data'
+  data_dir: 'data'
   dataset: 'CIFAR10'
   strongaugment: 'RA'  #'CTA'
   label_num: 4000
+  num_expand_x: 65536 # total number of labeled samples
+  mu: 7
+
+  batch_size: 64
+  num_workers: 4
 
 #MODEL:
 #  name: ''

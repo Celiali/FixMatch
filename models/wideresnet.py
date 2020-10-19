@@ -20,6 +20,7 @@
 #         return super().forward(x) + self.alpha
 # ###### forward -2 F.avg_pool2d(out, 8) --> F.adaptive_avg_pool2d(out,1)
 # ###### initial isinstance()
+# ###### activate before residual
 
 import math
 import torch
@@ -95,7 +96,8 @@ class WideResNet(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
             elif isinstance(m, nn.Linear):
-                m.bias.data.zero_()
+                nn.init.xavier_normal_(m.weight)
+                nn.init.constant_(m.bias, 0.0)
 
     def forward(self, x):
         out = self.conv1(x)

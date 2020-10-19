@@ -22,8 +22,8 @@ EXPERIMENT:
   optim_momentum: 0.9
   used_nesterov: True
 
-  batch_size: 2
-  epoch_n: 200
+  batch_size: 64
+  epoch_n: 1024
   save_every: 50
 
   resume: False

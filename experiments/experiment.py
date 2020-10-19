@@ -24,8 +24,8 @@ class FMExperiment(object):
         self.optimizer = optim.SGD(self.model.parameters(), lr=self.params.optim_lr,
                           momentum=self.params.optim_momentum, nesterov=self.params.used_nesterov)
 
-        # !!!!!! scheduler for the optimizer without warmup;  not finished (need to calculate total_training_step)
-        self.total_training_step = 100000
+        # !!!!!! TODO:scheduler for the optimizer without warmup;  not finished (need to calculate total_training_step)
+        self.total_training_step = 2**20
         self.scheduler = LambdaLR(optimizer=self.optimizer,
                                   lr_lambda=lambda current_step :
                                   math.cos(7 * math.pi * current_step / (16 * self.total_training_step)))
@@ -48,6 +48,8 @@ class FMExperiment(object):
         # turn on model training
         self.model.train()
         for batch_idx, (inputs_labelled, targets_labelled) in enumerate(self.labelled_loader):
+            # TODO: labeled dataloader , unlabeled dataloader , new loss
+            # TODO: pseudo label acc
             if self.used_gpu:
                 inputs_labelled = inputs_labelled.to(device = self.device)
                 targets_labelled = targets_labelled.to(device=self.device)

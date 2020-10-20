@@ -5,6 +5,7 @@ sys.path.append(os.getcwd())
 
 import numpy as np
 import ignite.distributed as idist
+import hydra
 
 from torch.utils.data import Dataset, SequentialSampler
 from torchvision import datasets
@@ -83,11 +84,12 @@ class LoadDataset(object):
         labeled_idx, unlabeled_idx = self.sampling(self.params.num_expand_x, trainset)
 
         # apply transforms
-        return self.apply_transform(labeled_idx, unlabeled_idx, trainset), testset
+        labeledSet, unlabeledSet = self.apply_transform(labeled_idx, unlabeled_idx, trainset)
+        return labeledSet, unlabeledSet, testset
 
         # self.get_dataloader(train_sup_dataset, train_unsup_dataset, testset)
 
-    def sampling(self, num_expand_x, trainset): # num_expand_x: 2^16 #expected total number of labeled training samples
+    def sampling(self, num_expand_x, trainset): # num_expand_x: 2^13 #expected total number of labeled training samples
         num_per_class = self.params.label_num // self.num_classes
         labels = np.array(trainset.targets)
 
@@ -178,7 +180,8 @@ class TransformFix(object):
         self.normalize = T.Compose([
             T.ToTensor(),
             T.Normalize(mean=mean, std=std),
-            T.RandomErasing(scale=(0.02, 0.15), value=127), ]  # cutout
+            # T.RandomErasing(scale=(0.02, 0.15), value=127), # cutout
+            ]  
         )
 
     def __call__(self, x):
@@ -192,12 +195,13 @@ class TransformedDataset(Dataset):
         self.dataset = dataset
         self.transform = transform
         self.target_transform = target_transform
-        if indexs is not None:
-            self.dataset.data = dataset.data[indexs]
-            self.dataset.targets = np.array(self.dataset.targets)[indexs]
+        self.indexs = indexs
+        # if indexs is not None:
+        #     self.dataset.data = dataset.data[indexs] 
+        #     self.dataset.targets = np.array(self.dataset.targets)[indexs]
 
     def __getitem__(self, i):
-        img, target = self.dataset[i]
+        img, target = self.dataset[self.indexs[i]]
 
         if self.transform is not None:
             img = self.transform(img)
@@ -208,40 +212,61 @@ class TransformedDataset(Dataset):
         return img, target
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.indexs)
 
 
 if __name__ == '__main__':
-    import hydra
     from omegaconf import DictConfig
     import matplotlib.pyplot as plt
+    import torch
+
     @hydra.main(config_path='../config', config_name='config')
     def main(cfg: DictConfig) -> None:
         print(f"Current working directory : {os.getcwd()}")
         print(f"Orig working directory    : {hydra.utils.get_original_cwd()}")
-        data = LoadDataset(cfg.DATASET)
-        data.get_dataloader()
-        for i, (name, loader) in enumerate(data.loader.items()):
-            img_batch, _ = next(iter(loader))
-            if isinstance(img_batch, list):
-                n = np.random.randint(0, img_batch[0].shape[0])
-                im = [T.ToPILImage()(img[n]).convert('RGB')
-                      for img in img_batch]
-                plt.figure(i)
-                plt.subplot(121)
-                plt.imshow(im[0])
-                plt.title('weakly augmented')
-                plt.subplot(122)
-                plt.imshow(im[1])
-                plt.title('strongly augmented (%s)' %
-                          cfg.DATASET.strongaugment)
-            else:
-                img = img_batch[np.random.randint(0, img_batch.shape[0])]
-                img = T.ToPILImage()(img).convert('RGB')
-                plt.figure(i)
-                plt.imshow(img)
+        def restore_stats(img): 
+            mean = TRANSFORM_CIFAR[cfg.DATASET.dataset]['mean']
+            mean = torch.tensor(mean).unsqueeze(dim=1).unsqueeze(dim=1)
+            std = TRANSFORM_CIFAR[cfg.DATASET.dataset]['std']
+            std = torch.tensor(std).unsqueeze(dim=1).unsqueeze(dim=1)
+            img = img * std + mean
+            return T.ToPILImage()(img).convert('RGB')
+        
+        def showImg(dataset: TransformedDataset, name, index=None):
+            idx = index or np.random.randint(0, len(dataset))
+            plt.figure(idx)
+            if name == 'test':
+                plt.imshow(restore_stats(dataset[0][0]))
                 plt.title(name)
+            else:
+                raw_img, _ = dataset.dataset[dataset.indexs[idx]]
+                transformed_img, _ = dataset[idx] # transformed img       
 
+                if isinstance(transformed_img, tuple):
+                    im = [restore_stats(img) for img in transformed_img]
+                    plt.subplot(131)
+                    plt.imshow(raw_img)
+                    plt.title('raw image')
+                    plt.subplot(132)
+                    plt.imshow(im[0])
+                    plt.title('weakly augmented')
+                    plt.subplot(133)
+                    plt.imshow(im[1])
+                    plt.title('strongly augmented (%s)' %
+                            cfg.DATASET.strongaugment)
+                else:
+                    transformed_img = restore_stats(transformed_img)
+                    plt.subplot(121)
+                    plt.imshow(raw_img)
+                    plt.title('raw image')
+                    plt.subplot(122)
+                    plt.imshow(transformed_img)
+                    plt.title(name)
+        
+        data = LoadDataset(cfg.DATASET)
+        dataset = data.get_dataset()
+        
+        for name, ds in zip(['train labeled', 'train unlabled', 'test'], dataset):
+            showImg(ds, name, index=0)
         plt.show()
-
     main()

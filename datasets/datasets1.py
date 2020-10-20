@@ -135,7 +135,7 @@ class LoadDataset(object):
         return train_sup_dataset, train_unsup_dataset
 
     def get_dataloader(self):
-        (train_sup_dataset, train_unsup_dataset), testset = self.get_dataset()
+        train_sup_dataset, train_unsup_dataset, testset = self.get_dataset()
 
         self.loader['labeled'] = idist.auto_dataloader(
             train_sup_dataset,

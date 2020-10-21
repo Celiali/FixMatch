@@ -23,7 +23,7 @@ TRANSFORM_CIFAR = {
          }
 }
 
-class LoadDataset(object):
+class LoadDataset_Vanilla(object):
     def __init__(self,params):
         self.params = params
         self.datapath = self.params.data_dir
@@ -66,7 +66,7 @@ class LoadDataset(object):
             trainset = torchvision.datasets.CIFAR100(root=self.datapath, train=True, transform=transform,download=downloadFlag)
             testset = torchvision.datasets.CIFAR100(root=self.datapath, train=False, transform=transform,download=downloadFlag)
 
-        return trainset,testset
+        return trainset,None,testset
 
 
 if __name__ == '__main__':
@@ -82,8 +82,8 @@ if __name__ == '__main__':
     CONFIG = edict(config_file)
     print('==> CONFIG is: \n', CONFIG, '\n')
 
-    data = LoadDataset(CONFIG.DATASET)
-    trainset, testset = data.get_dataset()
+    data = LoadDataset_Vanilla(CONFIG.DATASET)
+    trainset, _, testset = data.get_dataset()
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=1,
                                               shuffle=True, num_workers=4)
     testloader = torch.utils.data.DataLoader(testset, batch_size=1,
@@ -99,4 +99,9 @@ if __name__ == '__main__':
     a = x[0][:]
     plt.imshow(a.permute(1,2,0))
     plt.show()
-    plt.imsave('./test.png',a.permute(1,2,0).numpy())
+    # plt.imsave('./test.png',a.permute(1,2,0).numpy())
+    # # add mean and std back to the image
+    # t = a.permute(1,2,0).numpy()
+    # t2 = t* TRANSFORM_CIFAR[CONFIG.DATASET.dataset ]['std']+TRANSFORM_CIFAR[CONFIG.DATASET.dataset ]['mean']
+    # plt.imshow(t2)
+    # plt.show()

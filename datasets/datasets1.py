@@ -34,7 +34,7 @@ STRONG_AUG = {
 }
 
 
-class LoadDataset(object):
+class LoadDataset_Label_Unlabel(object):
     def __init__(self, params):
         self.params = params
         self.datapath = self.params.data_dir
@@ -135,7 +135,7 @@ class LoadDataset(object):
         return train_sup_dataset, train_unsup_dataset
 
     def get_dataloader(self):
-        (train_sup_dataset, train_unsup_dataset), testset = self.get_dataset()
+        train_sup_dataset, train_unsup_dataset, testset = self.get_dataset()
 
         self.loader['labeled'] = idist.auto_dataloader(
             train_sup_dataset,
@@ -263,7 +263,7 @@ if __name__ == '__main__':
                     plt.imshow(transformed_img)
                     plt.title(name)
         
-        data = LoadDataset(cfg.DATASET)
+        data = LoadDataset_Label_Unlabel(cfg.DATASET)
         dataset = data.get_dataset()
         
         for name, ds in zip(['train labeled', 'train unlabled', 'test'], dataset):

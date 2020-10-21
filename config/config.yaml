@@ -1,8 +1,9 @@
 DATASET:
   project_dir: './'
   data_dir: 'data'
+  loading_data: 'LOAD_ORIGINAL' #---- 'LOAD_LABEL_UNLABEL' ---
   dataset: 'CIFAR10'
-  strongaugment: 'RA'  #'CTA'
+  strongaugment: 'RA'
   label_num: 4000
   num_expand_x: 65536 # total number of labeled samples
   mu: 7
@@ -10,14 +11,14 @@ DATASET:
   num_workers: 4
 
 MODEL:
-  name: 'WideResnet'
+  name: 'WideResNet_Lk'         #---- 'WideResNet'---
   depth: 28
   widen_factor: 2
   num_classes: 10
   dropout: 0.0
 
 EXPERIMENT:
-  name: 'FMTrainer'
+  name: 'VANILLA'               #---- 'FMExperiment' ---
   out_model: './checkpoints/'
   log_path: './outputs/exp1'
   used_gpu: True
@@ -26,13 +27,19 @@ EXPERIMENT:
   optim_momentum: 0.9
   used_nesterov: True
 
+  ema_used: True
+  ema_decay: 0.999
+
+  threshold: 0.95
+  lambda_unlabeled: 1
+
   batch_size: 64
   epoch_n: 1024
-  save_every: 50
+  save_every: 500
 
   resume: False
   resume_checkpoints: './checkpoints/xx.pth'
 
 Logging:
   name: "FM"
-  seed: 1265
+  seed: 1265                    #---- None ---

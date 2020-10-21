@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter
 from utils.utils import accuracy,AverageMeter
 from utils.ema import EMA
 
-class FMExperiment(object):
+class VanillaExperiment(object):
     def __init__(self, wideresnet, params):
         self.model = wideresnet
         self.params = params
@@ -34,6 +34,7 @@ class FMExperiment(object):
 
         #save log
         self.summary_logdir = os.path.join(self.params.log_path, 'summaries')
+        self.swriter = SummaryWriter(log_dir=self.summary_logdir)
 
         # used Gpu or not
         self.used_gpu = self.params.used_gpu
@@ -51,48 +52,19 @@ class FMExperiment(object):
         start = time.time()
         batch_time_meter = AverageMeter()
         train_losses_meter = AverageMeter()
-        labelled_losses_meter = AverageMeter()
-        unlabeled_losses_meter = AverageMeter() # pseudo loss for unlabeled data with strong augmentation
-        mask_meter = AverageMeter()
-        #### optional value cal
-        unlabeled_losses_real_strong_meter = AverageMeter()# real loss for unlabeled data with strong augmentation
-        corrrect_unlabeled_num_meter = AverageMeter()#Num of Correct Predicted for Unlabelled data
-        pro_above_threshold_num_meter = AverageMeter()#Num of gradient-included Unlabelled data
-        unlabelled_weak_top1_acc_meter = AverageMeter()
-        unlabelled_weak_top5_acc_meter = AverageMeter()
 
         # turn on model training
-        train_loader = zip(self.labelled_loader, self.unlabelled_loader)
         self.model.train()
-        for batch_idx, (data_labelled, data_unlabelled) in enumerate(train_loader):
-            inputs_labelled, targets_labelled = data_labelled
-            inputs_unlabelled_weak, inputs_unlabelled_strong, targets_unlabelled = data_unlabelled
+        for batch_idx, (inputs_labelled, targets_labelled) in enumerate(self.labelled_loader):
             if self.used_gpu:
                 inputs_labelled = inputs_labelled.to(device = self.device)
                 targets_labelled = targets_labelled.to(device=self.device)
-                inputs_unlabelled_weak = inputs_unlabelled_weak.to(device = self.device)
-                inputs_unlabelled_strong = inputs_unlabelled_strong.to(device = self.device)
-                targets_unlabelled = targets_unlabelled.to(device=self.device)
-
-            batch_size = inputs_labelled.shape[0]
-            inputs = torch.cat((inputs_labelled, inputs_unlabelled_weak, inputs_unlabelled_strong))
 
             # forward
-            outputs = self.forward(inputs)
-            # separate different outputs for different inputs
-            outputs_labelled = outputs[:batch_size]
-            outputs_unlabelled_weak, outputs_unlabelled_strong = outputs[batch_size:].chunk(2)
-            del outputs
-
-            # compute pseudo label for unlabeled data with weak augmentations
-            outputs_labelled_weak_pro = torch.softmax(outputs_unlabelled_weak.detach_(), dim=-1)
-            scores, pseudo_label = torch.max(outputs_labelled_weak_pro, dim=-1)
-            mask = scores.ge(self.params.threshold).float()
+            outputs_labelled = self.forward(inputs_labelled)
 
             # compute loss for labelled data,unlabeled data,total loss
-            loss_labelled = F.cross_entropy(outputs_labelled, targets_labelled, reduction='mean')
-            loss_unlabelled_guess = (F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none') * mask).mean()
-            loss = loss_labelled + self.params.lambda_unlabeled * loss_unlabelled_guess
+            loss = F.cross_entropy(outputs_labelled, targets_labelled, reduction='mean')
 
             # compute gradient and backprop
             self.optimizer.zero_grad()
@@ -104,39 +76,15 @@ class FMExperiment(object):
             if self.ema:
                 self.ema_model.update_params()
 
-            #### optional value cal
-            # true loss for unlabelled data with strong augmentation
-            loss_unlabelled_true_strong = F.cross_entropy(outputs_unlabelled_strong, targets_unlabelled)
-            # correct predicted num
-            corrrect_unlabeled_num = (pseudo_label == targets_unlabelled).float() * mask
-            # numbers of predicted pro above threshold
-            pro_above_threshold_num = mask.sum()
-            # TODO: accuracy
-            # weak_top1_acc,weak_top5_acc = accuracy(pseudo_label,targets_unlabelled, topk=(1,5))
-
-            # TODO: scheduler
-            # cur_lr = self.scheduler.get_last_lr()[0],
-            # self.swriter.add_scalars('train/learning rate', {'lr':cur_lr}, epoch_idx)
-
             ############ update recording #################
             train_losses_meter.update(loss.item())
-            labelled_losses_meter.update(loss_labelled.item())
-            unlabeled_losses_meter.update(loss_unlabelled_guess.item())
-            mask_meter.update(mask.mean().item())
-            #### optional value cal
-            unlabeled_losses_real_strong_meter.update(loss_unlabelled_true_strong.item())
-            corrrect_unlabeled_num_meter.update(corrrect_unlabeled_num.sum().item())
-            pro_above_threshold_num_meter.update(pro_above_threshold_num.item())
-            # TODO: accuracy
-            # unlabelled_weak_top1_acc_meter.update(weak_top1_acc.item())
-            # unlabelled_weak_top5_acc_meter.update(weak_top5_acc.item())
             batch_time_meter.update(time.time() - start)
 
         # updating ema model (buffer)
         if self.ema:
             self.ema_model.update_buffer()
 
-        return train_losses_meter.avg,labelled_losses_meter.avg,unlabeled_losses_meter.avg,mask_meter.avg
+        return train_losses_meter.avg
 
     def testing_step(self):
         start = time.time()
@@ -164,8 +112,7 @@ class FMExperiment(object):
         return test_losses.avg,top1.avg,top5.avg
 
     def fitting(self):
-        # initial tensorboard
-        self.swriter = SummaryWriter(log_dir=self.summary_logdir)
+        prev_lr = np.inf
 
         if self.params.resume:
             # optionally resume from a checkpoint
@@ -173,7 +120,6 @@ class FMExperiment(object):
         else:
             start_epoch = 0
 
-        prev_lr = np.inf
         for epoch_idx in range(start_epoch, self.params.epoch_n):
             # turn on training
             start = time.time()
@@ -186,16 +132,8 @@ class FMExperiment(object):
                 print('--- Optimizer learning rate changed from %.2e to %.2e ---' % (prev_lr, cur_lr))
                 prev_lr = cur_lr
 
-            # apply shadow model
-            if self.ema:
-                self.ema_model.apply_shadow()
-
             # testing
             test_loss, top1_acc, top5_acc= self.testing_step()
-
-            # restore the params
-            if self.ema:
-                self.ema_model.restore()
 
             # saving data in tensorboard
             self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'test_loss': test_loss}, epoch_idx)
@@ -279,5 +217,5 @@ class FMExperiment(object):
         filename = os.path.join(saving_checkpoint_file_folder,'%s_epoch_%d.pth.tar'.format(self.params.name, epoch_idx))
         torch.save(state, filename)
 
-    # def end_writer(self):
-    #     self.swriter.close()
+    def end_writer(self):
+        self.swriter.close()

@@ -14,7 +14,7 @@ from torchvision.datasets.cifar import CIFAR100
 
 from augmentations.randaugment import RandAugment
 from augmentations.ctaugment import *
-
+from test_dataloader import *
 
 logger = logging.getLogger(__name__)
 
@@ -269,4 +269,5 @@ if __name__ == '__main__':
         for name, ds in zip(['train labeled', 'train unlabled', 'test'], dataset):
             showImg(ds, name, index=0)
         plt.show()
+        test_dataloader(data,cfg,TRANSFORM_CIFAR)
     main()

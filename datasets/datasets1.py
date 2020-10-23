@@ -56,7 +56,7 @@ class LoadDataset(object):
             T.ToTensor(),
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
                         std=TRANSFORM_CIFAR[self.name]['std'],)])
-        ########## Correction ##########
+        ########## paper lack of clarification ##########
         # The paper didn't clearly show the probability of translation, I set p=0.5 here
         
 

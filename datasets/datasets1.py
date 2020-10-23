@@ -46,14 +46,20 @@ class LoadDataset(object):
                                                             expected: CIFAR10, CIFAR100  \
                                                             received: {self.name }"
         self.labeled_transform = T.Compose([
-            T.RandomHorizontalFlip(),  # random flip with p=0.5
-            T.RandomCrop(size=32,
+            T.RandomApply([
+                T.RandomCrop(size=32,
                          # random shift 12.5% TODO: not random yet
                          padding=int(32*0.125),
                          padding_mode='reflect'),
+                ], p=0.5),
+            T.RandomHorizontalFlip(),  # random flip with p=0.5
             T.ToTensor(),
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
                         std=TRANSFORM_CIFAR[self.name]['std'],)])
+        ########## Correction ##########
+        # Translation is not RandomCrop but RandomAffine.
+        # The paper didn't clearly show the probability of translation, I set p=0.5 here
+        
 
         self.unlabeled_transform = TransformFix(
             mean=TRANSFORM_CIFAR[self.name]['mean'],
@@ -266,8 +272,8 @@ if __name__ == '__main__':
         data = LoadDataset(cfg.DATASET)
         dataset = data.get_dataset()
         
-        for name, ds in zip(['train labeled', 'train unlabled', 'test'], dataset):
-            showImg(ds, name, index=0)
-        plt.show()
+        # for name, ds in zip(['train labeled', 'train unlabled', 'test'], dataset):
+        #     showImg(ds, name, index=0)
+        # plt.show()
         test_dataloader(data,cfg,TRANSFORM_CIFAR)
     main()

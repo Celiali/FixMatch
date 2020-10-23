@@ -57,7 +57,6 @@ class LoadDataset(object):
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
                         std=TRANSFORM_CIFAR[self.name]['std'],)])
         ########## Correction ##########
-        # Translation is not RandomCrop but RandomAffine.
         # The paper didn't clearly show the probability of translation, I set p=0.5 here
         
 

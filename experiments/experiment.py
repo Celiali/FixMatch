@@ -137,7 +137,7 @@ class FMExperiment(object):
             #### optional value cal
             # true loss for unlabelled data with strong augmentation --- without any threshold
             loss_unlabelled_true_strong = F.cross_entropy(outputs_unlabelled_strong, targets_unlabelled)
-            # correct predicted num --- with threshold
+            #TODO: correct predicted num --- with threshold
             corrrect_unlabeled_num = ((pseudo_label == targets_unlabelled).float() * mask).sum()
             # numbers of predicted pro above threshold
             pro_above_threshold_num = mask.sum()
@@ -149,7 +149,7 @@ class FMExperiment(object):
             labelled_losses_meter.update(loss_labelled.item())
             unlabeled_losses_meter.update(loss_unlabelled_guess.item())
             mask_meter.update(mask.mean().item())
-            #### optional value cal
+            #### optional value cal TODO: without saving
             unlabeled_losses_real_strong_meter.update(loss_unlabelled_true_strong.item())
             corrrect_unlabeled_num_meter.update(corrrect_unlabeled_num.item())
             pro_above_threshold_num_meter.update(pro_above_threshold_num.item())
@@ -347,6 +347,7 @@ class FMExperiment(object):
         return
 
     def load_model(self, mdl_fname, cuda=False):
+        # TODO：not done
         if self.used_gpu:
             self.model.load_state_dict(torch.load(mdl_fname))
             self.model.cuda()
@@ -355,6 +356,7 @@ class FMExperiment(object):
         self.model.eval()
 
     def resume_model(self):
+        # TODO: not test
         """ optionally resume from a checkpoint
         Imported from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L247-L262 """
         start_epoch = 0

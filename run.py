@@ -68,6 +68,6 @@ if __name__ == '__main__':
     print("======= Training done =======")
     logger.info("======= Training done =======")
     experiment.test_loader(test_dataset)
-    experiment.testing_step()
+    experiment.testing()
     print("======= Testing done =======")
     logger.info("======= Testing done =======")

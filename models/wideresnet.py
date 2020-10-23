@@ -68,8 +68,12 @@ class NetworkBlock(nn.Module):
         return self.layer(x)
 
 class WideResNet(nn.Module):
-    def __init__(self, depth, num_classes, widen_factor=1, dropRate=0.0):
+    def __init__(self, params):#depth, num_classes, widen_factor=1, dropRate=0.0):
         super(WideResNet, self).__init__()
+        depth = params.depth
+        widen_factor = params.widen_factor
+        num_classes = params.num_classes
+        dropRate = params.dropout
         nChannels = [16, 16*widen_factor, 32*widen_factor, 64*widen_factor]
         assert((depth - 4) % 6 == 0)
         n = (depth - 4) / 6
@@ -109,19 +113,10 @@ class WideResNet(nn.Module):
         out = out.view(-1, self.nChannels)
         return self.fc(out)
 
-def build_wideresnet(params):
-    depth = params.depth
-    widen_factor = params.widen_factor
-    num_classes = params.num_classes
-    dropout = params.dropout
-    return WideResNet(depth=depth,
-                      widen_factor=widen_factor,
-                      dropRate=dropout,
-                      num_classes=num_classes)
 
 if __name__ == '__main__':
     from easydict import EasyDict as edict
     params = {'depth':28, 'widen_factor':2, 'num_classes':10, 'dropout': 0.0}
     params = edict(params)
-    m = build_wideresnet(params)
+    m = WideResNet(params)
     print(m)

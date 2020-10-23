@@ -1,4 +1,8 @@
 import torch
+import logging
+import os
+from datetime import datetime
+import sys
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k
@@ -20,9 +24,7 @@ def accuracy(output, target, topk=(1,)):
 class AverageMeter(object):
     """Computes and stores the average and current value
     Imported from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L247-L262 """
-    def __init__(self, name, fmt=':f'):
-        self.name = name
-        self.fmt = fmt
+    def __init__(self,):
         self.reset()
 
     def reset(self):
@@ -36,7 +38,35 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+    #
+    # def __str__(self):
+    #     fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
+    #     return fmtstr.format(**self.__dict__)
 
-    def __str__(self):
-        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
-        return fmtstr.format(**self.__dict__)
+
+def setup_default_logging(params, string = 'Train', default_level=logging.INFO,
+                          format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s"):
+    output_dir = os.path.join(params.EXPERIMENT.log_path)
+    os.makedirs(output_dir, exist_ok=True)
+
+    logger = logging.getLogger(string)
+
+    def time_str(fmt=None):
+        if fmt is None:
+            fmt = '%Y-%m-%d_%H:%M:%S'
+        return datetime.today().strftime(fmt)
+
+    logging.basicConfig(  # unlike the root logger, a custom logger can’t be configured using basicConfig()
+        filename=os.path.join(output_dir, f'{time_str()}.log'),
+        format=format,
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=default_level)
+
+    # print
+    # file_handler = logging.FileHandler()
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(default_level)
+    console_handler.setFormatter(logging.Formatter(format))
+    logger.addHandler(console_handler)
+
+    return logger

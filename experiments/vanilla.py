@@ -14,10 +14,11 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
-import ignite.distributed as idist
+import ignite
 
 from utils.utils import accuracy,AverageMeter
 from utils.ema import EMA
+
 
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
@@ -45,11 +46,11 @@ def get_cosine_schedule_with_warmup(optimizer,
 
 logger = logging.getLogger(__name__)
 
-class FMExperiment(object):
+class VanillaExperiment(object):
     def __init__(self, wideresnet, params):
         self.model = wideresnet
         self.params = params
-        self.curr_device = None
+
         # optimizer
         self.optimizer = optim.SGD(self.model.parameters(), lr=self.params.optim_lr,
                           momentum=self.params.optim_momentum, nesterov=self.params.used_nesterov)
@@ -80,48 +81,19 @@ class FMExperiment(object):
         start = time.time()
         batch_time_meter = AverageMeter()
         train_losses_meter = AverageMeter()
-        labelled_losses_meter = AverageMeter()
-        unlabeled_losses_meter = AverageMeter() # pseudo loss for unlabeled data with strong augmentation
-        mask_meter = AverageMeter()
-        #### optional value cal
-        unlabeled_losses_real_strong_meter = AverageMeter()# real loss for unlabeled data with strong augmentation
-        corrrect_unlabeled_num_meter = AverageMeter()#Num of Correct Predicted for Unlabelled data
-        pro_above_threshold_num_meter = AverageMeter()#Num of gradient-included Unlabelled data
-        unlabelled_weak_top1_acc_meter = AverageMeter()
-        unlabelled_weak_top5_acc_meter = AverageMeter()
 
         # turn on model training
-        train_loader = zip(self.labelled_loader, self.unlabelled_loader)
         self.model.train()
-        for batch_idx, (data_labelled, data_unlabelled) in enumerate(train_loader):
-            inputs_labelled, targets_labelled = data_labelled
-            (inputs_unlabelled_weak, inputs_unlabelled_strong), targets_unlabelled = data_unlabelled
+        for batch_idx, (inputs_labelled, targets_labelled) in enumerate(self.labelled_loader):
             if self.used_gpu:
                 inputs_labelled = inputs_labelled.to(device = self.device)
                 targets_labelled = targets_labelled.to(device=self.device)
-                inputs_unlabelled_weak = inputs_unlabelled_weak.to(device = self.device)
-                inputs_unlabelled_strong = inputs_unlabelled_strong.to(device = self.device)
-                targets_unlabelled = targets_unlabelled.to(device=self.device)
-
-            batch_size = inputs_labelled.shape[0]
-            inputs = torch.cat((inputs_labelled, inputs_unlabelled_weak, inputs_unlabelled_strong))
 
             # forward
-            outputs = self.forward(inputs)
-            # separate different outputs for different inputs
-            outputs_labelled = outputs[:batch_size]
-            outputs_unlabelled_weak, outputs_unlabelled_strong = outputs[batch_size:].chunk(2)
-            del outputs
-
-            # compute pseudo label for unlabeled data with weak augmentations
-            outputs_labelled_weak_pro = torch.softmax(outputs_unlabelled_weak.detach_(), dim=-1)
-            scores, pseudo_label = torch.max(outputs_labelled_weak_pro, dim=-1)
-            mask = scores.ge(self.params.threshold).float()
+            outputs_labelled = self.forward(inputs_labelled)
 
             # compute loss for labelled data,unlabeled data,total loss
-            loss_labelled = F.cross_entropy(outputs_labelled, targets_labelled, reduction='mean')
-            loss_unlabelled_guess = (F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none') * mask).mean()
-            loss = loss_labelled + self.params.lambda_unlabeled * loss_unlabelled_guess
+            loss = F.cross_entropy(outputs_labelled, targets_labelled, reduction='mean')
 
             # compute gradient and backprop
             self.optimizer.zero_grad()
@@ -132,29 +104,10 @@ class FMExperiment(object):
             # updating ema model (params)
             if self.ema:
                 self.ema_model.update_params()
-                logger.info("[EMA] update params()")
-
-            #### optional value cal
-            # true loss for unlabelled data with strong augmentation --- without any threshold
-            loss_unlabelled_true_strong = F.cross_entropy(outputs_unlabelled_strong, targets_unlabelled)
-            # correct predicted num --- with threshold
-            corrrect_unlabeled_num = ((pseudo_label == targets_unlabelled).float() * mask).sum()
-            # numbers of predicted pro above threshold
-            pro_above_threshold_num = mask.sum()
-            # TODO:  pseudo label accuracy are cal without threshold
-            weak_top1_acc,weak_top5_acc = accuracy(outputs_unlabelled_weak,targets_unlabelled, topk=(1,5))
+                # logger.info("[EMA] update params()")
 
             ############ update recording #################
             train_losses_meter.update(loss.item())
-            labelled_losses_meter.update(loss_labelled.item())
-            unlabeled_losses_meter.update(loss_unlabelled_guess.item())
-            mask_meter.update(mask.mean().item())
-            #### optional value cal
-            unlabeled_losses_real_strong_meter.update(loss_unlabelled_true_strong.item())
-            corrrect_unlabeled_num_meter.update(corrrect_unlabeled_num.item())
-            pro_above_threshold_num_meter.update(pro_above_threshold_num.item())
-            unlabelled_weak_top1_acc_meter.update(weak_top1_acc.item())
-            unlabelled_weak_top5_acc_meter.update(weak_top5_acc.item())
             batch_time_meter.update(time.time() - start)
 
         # updating ema model (buffer)
@@ -162,33 +115,7 @@ class FMExperiment(object):
             self.ema_model.update_buffer()
             logger.info("[EMA] update buffer()")
 
-        return train_losses_meter.avg,labelled_losses_meter.avg,unlabeled_losses_meter.avg,mask_meter.avg
-
-    def test_step(self):
-        logger.info("***** Running testing *****")
-        start = time.time()
-        batch_time_meter = AverageMeter()
-        test_losses_meter = AverageMeter()
-        top1_meter = AverageMeter()
-        top5_meter = AverageMeter()
-        with torch.no_grad():
-            for batch_idx, (inputs, targets) in enumerate(self.test_dataloader):
-                self.model.eval()
-                if self.used_gpu:
-                    inputs = inputs.to(device=self.device)
-                    targets = targets.to(device=self.device)
-                # forward
-                outputs = self.forward(inputs)
-                # compute loss and accuracy
-                loss = F.cross_entropy(outputs, targets)
-                acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
-                # update recording
-                test_losses_meter.update(loss.item(), inputs.shape[0])
-                top1_meter.update(acc1[0], inputs.size(0))
-                top5_meter.update(acc5[0], inputs.size(0))
-                batch_time_meter.update(time.time() - start)
-
-        return test_losses_meter.avg,top1_meter.avg,top5_meter.avg
+        return train_losses_meter.avg
 
     def validation_step(self):
         logger.info("***** Running validation *****")
@@ -215,6 +142,32 @@ class FMExperiment(object):
                 batch_time_meter.update(time.time() - start)
         return valid_losses_meter.avg,top1_meter.avg,top5_meter.avg
 
+    def test_step(self):
+        logger.info("***** Running testing *****")
+        start = time.time()
+        batch_time_meter = AverageMeter()
+        test_losses_meter = AverageMeter()
+        top1_meter = AverageMeter()
+        top5_meter = AverageMeter()
+
+        with torch.no_grad():
+            for batch_idx, (inputs, targets) in enumerate(self.test_dataloader):
+                self.model.eval()
+                if self.used_gpu:
+                    inputs = inputs.to(device=self.device)
+                    targets = targets.to(device=self.device)
+                # forward
+                outputs = self.forward(inputs)
+                # compute loss and accuracy
+                loss = F.cross_entropy(outputs, targets)
+                acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
+                # update recording
+                test_losses_meter.update(loss.item(), inputs.shape[0])
+                top1_meter.update(acc1[0], inputs.size(0))
+                top5_meter.update(acc5[0], inputs.size(0))
+                batch_time_meter.update(time.time() - start)
+        return test_losses_meter.avg,top1_meter.avg,top5_meter.avg
+
 
     def testing(self):
         # apply shadow model
@@ -235,9 +188,10 @@ class FMExperiment(object):
             self.ema_model.restore()
             logger.info("[EMA] restore ")
 
+
     def fitting(self):
-        # initial tensorboard
         self.swriter = SummaryWriter(log_dir=self.summary_logdir)
+        prev_lr = np.inf
 
         if self.params.resume:
             # optionally resume from a checkpoint
@@ -245,56 +199,38 @@ class FMExperiment(object):
         else:
             start_epoch = 0
 
-        prev_lr = np.inf
         for epoch_idx in range(start_epoch, self.params.epoch_n):
             # turn on training
             start = time.time()
-            train_loss,labelled_loss,unlabeled_loss,mask = self.train_step()
+            train_loss = self.train_step()
             end = time.time()
-            print("epoch {}: use {} seconds".format(epoch_idx, end - start))
 
-            cur_lr = self.optimizer.param_groups[0]['lr'] # self.scheduler.get_last_lr()[0]
+            cur_lr = self.optimizer.param_groups[0]['lr']
             if cur_lr != prev_lr:
-                print('--- Optimizer learning rate changed from %.2e to %.2e ---' % (prev_lr, cur_lr))
                 prev_lr = cur_lr
-
-            # testing
-            raw_test_loss, raw_top1_acc, raw_top5_acc = self.validation_step()
 
             # apply shadow model
             if self.ema:
                 self.ema_model.apply_shadow()
                 logger.info("[EMA] apply shadow")
 
-                # testing
-                ema_test_loss, ema_top1_acc, ema_top5_acc= self.validation_step()
+            # validation
+            valid_loss, top1_acc, top5_acc= self.validation_step()
 
-                # restore the params
+            # restore the params
+            if self.ema:
                 self.ema_model.restore()
                 logger.info("[EMA] restore ")
 
             # saving data in tensorboard
+            self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'test_loss': valid_loss}, epoch_idx)
+            self.swriter.add_scalars('test/accuracy', {'Top1': top1_acc, 'Top5': top5_acc}, epoch_idx)
             self.swriter.add_scalars('train/lr', {'Current Lr': cur_lr}, epoch_idx)
-            self.swriter.add_scalars('test/accuracy', {'Top1': raw_top1_acc, 'Top5': raw_top5_acc}, epoch_idx)
-            if self.ema:
-                self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'raw_test_loss': raw_test_loss,
-                                                        'ema_test_loss': ema_test_loss}, epoch_idx)
-                self.swriter.add_scalars('test ema/accuracy', {'Top1': ema_top1_acc, 'Top5': ema_top5_acc}, epoch_idx)
-                logger.info(
-                    "[EMA] Epoch {}. time:{} seconds, lr:{:.4f}, "
-                    "train_loss: {:.4f}, raw_testing_loss: {:.4f}, raw test Top1 acc:{}, raw test Top5 acc: {}, "
-                    " ema_testing_loss: {:.4f}, ema test Top1 acc:{}, ema test Top5 acc: {}".format(
-                        epoch_idx, end - start, cur_lr,
-                        train_loss, raw_test_loss, raw_top1_acc, raw_top5_acc,
-                        ema_test_loss, ema_top1_acc, ema_top5_acc))
 
-            else:   # if ema is not used ; save the infor without ema
-                self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'test_loss': raw_test_loss,}, epoch_idx)
-                logger.info(
-                    "[no EMA] Epoch {}. time:{} seconds, lr:{:.4f}, "
-                    "train_loss: {:.4f}, testing_loss: {:.4f}, test Top1 acc:{}, test Top5 acc: {}".format(
-                        epoch_idx, end - start, cur_lr, train_loss, raw_test_loss, raw_top1_acc, raw_top5_acc))
-
+            logger.info(
+                "Epoch {}. time:{} seconds, lr:{:.4f}, "
+                "train_loss: {:.4f}, testing_loss: {:.4f}, test Top1 acc:{}, test Top5 acc: {}".format(
+                    epoch_idx, end - start, cur_lr, train_loss, valid_loss, top1_acc, top5_acc))
 
             # saving model
             if epoch_idx == 0 or (epoch_idx + 1) % self.params.save_every == 0:
@@ -343,7 +279,7 @@ class FMExperiment(object):
                                           batch_size=self.params.batch_size,
                                           shuffle=False,
                                           drop_last=True)
-        logger.info("Loading Testing Loader")
+        logger.info("Loading testing Loader")
         return
 
     def load_model(self, mdl_fname, cuda=False):
@@ -375,19 +311,18 @@ class FMExperiment(object):
                 if self.ema:
                     self.ema_model.load_state_dict(checkpoint['ema_state_dict'])
                 print("=> loaded checkpoint '{}' (epoch {})".format(self.params.resume_checkpoints, checkpoint['epoch']))
-                logger.info("=> loaded checkpoint '{}' (epoch {})".format(self.params.resume_checkpoints, checkpoint['epoch']))
+                logger.info(
+                    "=> loaded checkpoint '{}' (epoch {})".format(self.params.resume_checkpoints, checkpoint['epoch']))
             else:
                 print("=> no checkpoint found at '{}'".format(self.params.resume_checkpoints))
                 logger.info("=> no checkpoint found at '{}'".format(self.params.resume_checkpoints))
         return start_epoch
 
     def save_checkpoint(self,state, epoch_idx):
-        saving_checkpoint_file_folder = os.path.join(self.params.out_model, self.params.log_path.split('/')[-1])
+        saving_checkpoint_file_folder = os.path.join(self.params.out_model,self.params.log_path.split('/')[-1])
         if not exists(saving_checkpoint_file_folder):
             mkdir(saving_checkpoint_file_folder)
         filename = os.path.join(saving_checkpoint_file_folder,'{}_epoch_{}.pth.tar'.format(self.params.name, epoch_idx))
-        torch.save(state, filename)
+        ######## testing #########
+        # torch.save(state, filename)
         logger.info("[Checkpoints] Epoch {}, saving to {}".format(state['epoch'], filename))
-
-# def end_writer(self):
-    #     self.swriter.close()

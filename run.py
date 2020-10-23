@@ -4,15 +4,17 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 from easydict import EasyDict as edict
+import random
 
-from datasets.datasets import *
-from models.wideresnet import *
-from experiments.experiment import *
+from datasets import *
+from models import *
+from experiments import *
+from utils.utils import setup_default_logging
 
 if __name__ == '__main__':
     #### Error: Initializing libiomp5.dylib, but found libiomp5.dylib already initialized.###
-    import os
-    os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+    # import os
+    # os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
     # configuration
     parser = argparse.ArgumentParser(description='Generic runner for FixMatch')
@@ -31,28 +33,41 @@ if __name__ == '__main__':
     CONFIG = edict(config_file)
     print('==> CONFIG is: \n', CONFIG, '\n')
 
-    # # For reproducibility
-    torch.manual_seed(CONFIG.Logging.seed)
+    # initial logging file
+    logger = setup_default_logging(CONFIG, string = 'Train')
+    logger.info(CONFIG)
+
+    # # For reproducibility, set random seed
+    if CONFIG.Logging.seed == 'None':
+        CONFIG.Logging.seed = random.randint(1, 10000)
+    random.seed(CONFIG.Logging.seed)
     np.random.seed(CONFIG.Logging.seed)
-    # cudnn.deterministic = True
-    # cudnn.benchmark = False
+    torch.manual_seed(CONFIG.Logging.seed)
+    torch.cuda.manual_seed_all(CONFIG.Logging.seed)
+    cudnn.deterministic = True
+    cudnn.benchmark = False
 
     # get datasets
-    data = LoadDataset(CONFIG.DATASET)
-    labeled_training_dataset, test_dataset = data.get_dataset()
+    data = LOADDATA[CONFIG.DATASET.loading_data](CONFIG.DATASET)
+    labeled_training_dataset,unlabeled_training_dataset, test_dataset = data.get_dataset()
 
     # build wideresnet
-    model = build_wideresnet(CONFIG.MODEL)
+    model = WRN_MODELS[CONFIG.MODEL.name](CONFIG.MODEL)
+    logger.info("[Model] Building model {}".format(CONFIG.MODEL.name))
 
     if CONFIG.EXPERIMENT.used_gpu:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = model.to(device=device)
 
-    experiment = FMExperiment(model,CONFIG.EXPERIMENT)
+    experiment = EXPERIMENT[CONFIG.EXPERIMENT.name](model,CONFIG.EXPERIMENT)
     experiment.labelled_loader(labeled_training_dataset)
-    # experiment.unlabelled_loader(unlabeled_training_dataset)
-    experiment.test_loader(test_dataset)
+    if CONFIG.DATASET.loading_data != 'LOAD_ORIGINAL' and unlabeled_training_dataset != None:
+        experiment.unlabelled_loader(unlabeled_training_dataset, CONFIG.DATASET.mu)
+    experiment.valid_loader(test_dataset)
     experiment.fitting()
-
-    experiment.end_writer()
     print("======= Training done =======")
+    logger.info("======= Training done =======")
+    experiment.test_loader(test_dataset)
+    experiment.testing_step()
+    print("======= Testing done =======")
+    logger.info("======= Testing done =======")

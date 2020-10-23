@@ -12,6 +12,7 @@ import torchvision
 from torchvision import transforms
 
 from augmentations import randaugment
+import logging
 
 TRANSFORM_CIFAR = {
     'CIFAR10':
@@ -22,6 +23,8 @@ TRANSFORM_CIFAR = {
          'std': (0.2675, 0.2565, 0.2761)
          }
 }
+
+logger = logging.getLogger(__name__)
 
 class LoadDataset_Vanilla(object):
     def __init__(self,params):
@@ -65,6 +68,10 @@ class LoadDataset_Vanilla(object):
             downloadFlag = not os.path.exists(os.path.join(self.datapath, 'cifar-100-batches-py'))
             trainset = torchvision.datasets.CIFAR100(root=self.datapath, train=True, transform=transform,download=downloadFlag)
             testset = torchvision.datasets.CIFAR100(root=self.datapath, train=False, transform=transform,download=downloadFlag)
+
+        logger.info(f"[Dataset] Loading original dataset {self.params.dataset}")
+        logger.info(f"Training examples: {len(trainset)}"
+                    f" Testing examples: {len(testset)}")
 
         return trainset,None,testset
 

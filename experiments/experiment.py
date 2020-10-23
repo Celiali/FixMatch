@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from os.path import exists
 from os import mkdir
 import shutil
+import logging
 
 import torch
 from torch import optim
@@ -13,9 +14,36 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
+import ignite.distributed as idist
 
 from utils.utils import accuracy,AverageMeter
 from utils.ema import EMA
+
+def get_cosine_schedule_with_warmup(optimizer,
+                                    num_warmup_steps,
+                                    num_training_steps,
+                                    num_cycles=7. / 16.,
+                                    last_epoch=-1):
+    """ <Borrowed from `transformers`>
+        Create a schedule with a learning rate that decreases from the initial lr set in the optimizer to 0,
+        after a warmup period during which it increases from 0 to the initial lr set in the optimizer.
+        Args:
+            optimizer (:class:`~torch.optim.Optimizer`): The optimizer for which to schedule the learning rate.
+            num_warmup_steps (:obj:`int`): The number of steps for the warmup phase.
+            num_training_steps (:obj:`int`): The total number of training steps.
+            last_epoch (:obj:`int`, `optional`, defaults to -1): The index of the last epoch when resuming training.
+        Return:
+            :obj:`torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
+    """
+    def _lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        no_progress = float(current_step - num_warmup_steps) / \
+                      float(max(1, num_training_steps - num_warmup_steps))
+        return max(0., math.cos(math.pi * num_cycles * no_progress))  # this is correct
+    return LambdaLR(optimizer, _lr_lambda, last_epoch)
+
+logger = logging.getLogger(__name__)
 
 class FMExperiment(object):
     def __init__(self, wideresnet, params):
@@ -26,11 +54,10 @@ class FMExperiment(object):
         self.optimizer = optim.SGD(self.model.parameters(), lr=self.params.optim_lr,
                           momentum=self.params.optim_momentum, nesterov=self.params.used_nesterov)
 
-        # !!!!!! TODO:scheduler for the optimizer without warmup;  not finished (need to calculate total_training_step)
-        self.total_training_step = 2**20
-        self.scheduler = LambdaLR(optimizer=self.optimizer,
-                                  lr_lambda=lambda current_step :
-                                  math.cos(7 * math.pi * current_step / (16 * self.total_training_step)))
+        per_epoch_steps = self.params.n_imgs_per_epoch // self.params.batch_size
+        total_training_steps = self.params.epoch_n * per_epoch_steps
+        warmup_steps = self.params.warmup * per_epoch_steps
+        self.scheduler = get_cosine_schedule_with_warmup(self.optimizer, warmup_steps, total_training_steps)
 
         #save log
         self.summary_logdir = os.path.join(self.params.log_path, 'summaries')
@@ -43,11 +70,13 @@ class FMExperiment(object):
         self.ema = self.params.ema_used
         if self.ema:
             self.ema_model = EMA(self.model, self.params.ema_decay)
+            logger.info("[EMA] initial ")
 
     def forward(self, input):
         return self.model(input)
 
-    def training_step(self):
+    def train_step(self):
+        logger.info("***** Running training *****")
         start = time.time()
         batch_time_meter = AverageMeter()
         train_losses_meter = AverageMeter()
@@ -66,7 +95,7 @@ class FMExperiment(object):
         self.model.train()
         for batch_idx, (data_labelled, data_unlabelled) in enumerate(train_loader):
             inputs_labelled, targets_labelled = data_labelled
-            inputs_unlabelled_weak, inputs_unlabelled_strong, targets_unlabelled = data_unlabelled
+            (inputs_unlabelled_weak, inputs_unlabelled_strong), targets_unlabelled = data_unlabelled
             if self.used_gpu:
                 inputs_labelled = inputs_labelled.to(device = self.device)
                 targets_labelled = targets_labelled.to(device=self.device)
@@ -103,20 +132,17 @@ class FMExperiment(object):
             # updating ema model (params)
             if self.ema:
                 self.ema_model.update_params()
+                logger.info("[EMA] update params()")
 
             #### optional value cal
-            # true loss for unlabelled data with strong augmentation
+            # true loss for unlabelled data with strong augmentation --- without any threshold
             loss_unlabelled_true_strong = F.cross_entropy(outputs_unlabelled_strong, targets_unlabelled)
-            # correct predicted num
-            corrrect_unlabeled_num = (pseudo_label == targets_unlabelled).float() * mask
+            # correct predicted num --- with threshold
+            corrrect_unlabeled_num = ((pseudo_label == targets_unlabelled).float() * mask).sum()
             # numbers of predicted pro above threshold
             pro_above_threshold_num = mask.sum()
-            # TODO: accuracy
-            # weak_top1_acc,weak_top5_acc = accuracy(pseudo_label,targets_unlabelled, topk=(1,5))
-
-            # TODO: scheduler
-            # cur_lr = self.scheduler.get_last_lr()[0],
-            # self.swriter.add_scalars('train/learning rate', {'lr':cur_lr}, epoch_idx)
+            # TODO:  pseudo label accuracy are cal without threshold
+            weak_top1_acc,weak_top5_acc = accuracy(outputs_unlabelled_weak,targets_unlabelled, topk=(1,5))
 
             ############ update recording #################
             train_losses_meter.update(loss.item())
@@ -125,25 +151,26 @@ class FMExperiment(object):
             mask_meter.update(mask.mean().item())
             #### optional value cal
             unlabeled_losses_real_strong_meter.update(loss_unlabelled_true_strong.item())
-            corrrect_unlabeled_num_meter.update(corrrect_unlabeled_num.sum().item())
+            corrrect_unlabeled_num_meter.update(corrrect_unlabeled_num.item())
             pro_above_threshold_num_meter.update(pro_above_threshold_num.item())
-            # TODO: accuracy
-            # unlabelled_weak_top1_acc_meter.update(weak_top1_acc.item())
-            # unlabelled_weak_top5_acc_meter.update(weak_top5_acc.item())
+            unlabelled_weak_top1_acc_meter.update(weak_top1_acc.item())
+            unlabelled_weak_top5_acc_meter.update(weak_top5_acc.item())
             batch_time_meter.update(time.time() - start)
 
         # updating ema model (buffer)
         if self.ema:
             self.ema_model.update_buffer()
+            logger.info("[EMA] update buffer()")
 
         return train_losses_meter.avg,labelled_losses_meter.avg,unlabeled_losses_meter.avg,mask_meter.avg
 
-    def testing_step(self):
+    def test_step(self):
+        logger.info("***** Running testing *****")
         start = time.time()
-        batch_time = AverageMeter()
-        test_losses = AverageMeter()
-        top1 = AverageMeter()
-        top5 = AverageMeter()
+        batch_time_meter = AverageMeter()
+        test_losses_meter = AverageMeter()
+        top1_meter = AverageMeter()
+        top5_meter = AverageMeter()
         with torch.no_grad():
             for batch_idx, (inputs, targets) in enumerate(self.test_dataloader):
                 self.model.eval()
@@ -156,12 +183,57 @@ class FMExperiment(object):
                 loss = F.cross_entropy(outputs, targets)
                 acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
                 # update recording
-                test_losses.update(loss.item(), inputs.shape[0])
-                top1.update(acc1[0], inputs.size(0))
-                top5.update(acc5[0], inputs.size(0))
-                batch_time.update(time.time() - start)
+                test_losses_meter.update(loss.item(), inputs.shape[0])
+                top1_meter.update(acc1[0], inputs.size(0))
+                top5_meter.update(acc5[0], inputs.size(0))
+                batch_time_meter.update(time.time() - start)
 
-        return test_losses.avg,top1.avg,top5.avg
+        return test_losses_meter.avg,top1_meter.avg,top5_meter.avg
+
+    def validation_step(self):
+        logger.info("***** Running validation *****")
+        start = time.time()
+        batch_time_meter = AverageMeter()
+        valid_losses_meter = AverageMeter()
+        top1_meter = AverageMeter()
+        top5_meter = AverageMeter()
+        with torch.no_grad():
+            for batch_idx, (inputs, targets) in enumerate(self.valid_dataloader):
+                self.model.eval()
+                if self.used_gpu:
+                    inputs = inputs.to(device=self.device)
+                    targets = targets.to(device=self.device)
+                # forward
+                outputs = self.forward(inputs)
+                # compute loss and accuracy
+                loss = F.cross_entropy(outputs, targets)
+                acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
+                # update recording
+                valid_losses_meter.update(loss.item(), inputs.shape[0])
+                top1_meter.update(acc1[0], inputs.size(0))
+                top5_meter.update(acc5[0], inputs.size(0))
+                batch_time_meter.update(time.time() - start)
+        return valid_losses_meter.avg,top1_meter.avg,top5_meter.avg
+
+
+    def testing(self):
+        # apply shadow model
+        if self.ema:
+            self.ema_model.apply_shadow()
+            logger.info("[Testing with EMA] apply shadow")
+
+        test_loss, top1_acc, top5_acc= self.test_step()
+        if self.ema:
+            logger.info(
+                "[Testing(EMA)] testing_loss: {:.4f}, test Top1 acc:{}, test Top5 acc: {}".format(test_loss,top1_acc,top5_acc))
+        else:
+            logger.info(
+            "[Testing] testing_loss: {:.4f}, test Top1 acc:{}, test Top5 acc: {}".format(test_loss,top1_acc,top5_acc))
+
+        # restore the params
+        if self.ema:
+            self.ema_model.restore()
+            logger.info("[EMA] restore ")
 
     def fitting(self):
         # initial tensorboard
@@ -177,29 +249,52 @@ class FMExperiment(object):
         for epoch_idx in range(start_epoch, self.params.epoch_n):
             # turn on training
             start = time.time()
-            train_loss,labelled_loss,unlabeled_loss,mask = self.training_step()
+            train_loss,labelled_loss,unlabeled_loss,mask = self.train_step()
             end = time.time()
             print("epoch {}: use {} seconds".format(epoch_idx, end - start))
 
-            cur_lr = self.optimizer.param_groups[0]['lr']
+            cur_lr = self.optimizer.param_groups[0]['lr'] # self.scheduler.get_last_lr()[0]
             if cur_lr != prev_lr:
                 print('--- Optimizer learning rate changed from %.2e to %.2e ---' % (prev_lr, cur_lr))
                 prev_lr = cur_lr
 
+            # testing
+            raw_test_loss, raw_top1_acc, raw_top5_acc = self.validation_step()
+
             # apply shadow model
             if self.ema:
                 self.ema_model.apply_shadow()
+                logger.info("[EMA] apply shadow")
 
-            # testing
-            test_loss, top1_acc, top5_acc= self.testing_step()
+                # testing
+                ema_test_loss, ema_top1_acc, ema_top5_acc= self.validation_step()
 
-            # restore the params
-            if self.ema:
+                # restore the params
                 self.ema_model.restore()
+                logger.info("[EMA] restore ")
 
             # saving data in tensorboard
-            self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'test_loss': test_loss}, epoch_idx)
-            self.swriter.add_scalars('test/accuracy', {'Top1': top1_acc, 'Top5': top5_acc}, epoch_idx)
+            self.swriter.add_scalars('train/lr', {'Current Lr': cur_lr}, epoch_idx)
+            self.swriter.add_scalars('test/accuracy', {'Top1': raw_top1_acc, 'Top5': raw_top5_acc}, epoch_idx)
+            if self.ema:
+                self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'raw_test_loss': raw_test_loss,
+                                                        'ema_test_loss': ema_test_loss}, epoch_idx)
+                self.swriter.add_scalars('test ema/accuracy', {'Top1': ema_top1_acc, 'Top5': ema_top5_acc}, epoch_idx)
+                logger.info(
+                    "[EMA] Epoch {}. time:{} seconds, lr:{:.4f}, "
+                    "train_loss: {:.4f}, raw_testing_loss: {:.4f}, raw test Top1 acc:{}, raw test Top5 acc: {}, "
+                    " ema_testing_loss: {:.4f}, ema test Top1 acc:{}, ema test Top5 acc: {}".format(
+                        epoch_idx, end - start, cur_lr,
+                        train_loss, raw_test_loss, raw_top1_acc, raw_top5_acc,
+                        ema_test_loss, ema_top1_acc, ema_top5_acc))
+
+            else:   # if ema is not used ; save the infor without ema
+                self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'test_loss': raw_test_loss,}, epoch_idx)
+                logger.info(
+                    "[no EMA] Epoch {}. time:{} seconds, lr:{:.4f}, "
+                    "train_loss: {:.4f}, testing_loss: {:.4f}, test Top1 acc:{}, test Top5 acc: {}".format(
+                        epoch_idx, end - start, cur_lr, train_loss, raw_test_loss, raw_top1_acc, raw_top5_acc))
+
 
             # saving model
             if epoch_idx == 0 or (epoch_idx + 1) % self.params.save_every == 0:
@@ -221,22 +316,34 @@ class FMExperiment(object):
                                            batch_size=self.params.batch_size,
                                            shuffle=True,
                                            drop_last=True)
+        logger.info("Loading Labelled Loader")
         return
 
-    def unlabelled_loader(self,unlabelled_training_dataset):
+    def unlabelled_loader(self,unlabelled_training_dataset, mu):
         self.num_valid = len(unlabelled_training_dataset)
         self.unlabelled_loader = DataLoader(unlabelled_training_dataset,
-                                           batch_size=self.params.batch_size,
+                                           batch_size=self.params.batch_size * mu,
                                            shuffle=True,
                                            drop_last=True)
+        logger.info("Loading Unlabelled Loader")
+        return
+
+    def validation_loader(self,valid_dataset):
+        self.num_valid_imgs = len(valid_dataset) # same as len(dataloader)
+        self.valid_dataloader = DataLoader(valid_dataset,
+                                          batch_size=self.params.batch_size,
+                                          shuffle=False,
+                                          drop_last=True)
+        logger.info("Loading Validation Loader")
         return
 
     def test_loader(self,test_dataset):
         self.num_test_imgs = len(test_dataset) # same as len(dataloader)
         self.test_dataloader = DataLoader(test_dataset,
-                                          batch_size=1,
+                                          batch_size=self.params.batch_size,
                                           shuffle=False,
                                           drop_last=True)
+        logger.info("Loading Testing Loader")
         return
 
     def load_model(self, mdl_fname, cuda=False):
@@ -255,6 +362,7 @@ class FMExperiment(object):
         if self.params.resume:
             if os.path.isfile(self.params.resume_checkpoints):
                 print("=> loading checkpoint '{}'".format(self.params.resume_checkpoints))
+                logger.info("==> Resuming from checkpoint..")
                 if self.used_gpu:
                     # Map model to be loaded to specified single gpu.
                     checkpoint = torch.load(self.params.resume_checkpoints, map_location=self.device)
@@ -267,17 +375,19 @@ class FMExperiment(object):
                 if self.ema:
                     self.ema_model.load_state_dict(checkpoint['ema_state_dict'])
                 print("=> loaded checkpoint '{}' (epoch {})".format(self.params.resume_checkpoints, checkpoint['epoch']))
+                logger.info("=> loaded checkpoint '{}' (epoch {})".format(self.params.resume_checkpoints, checkpoint['epoch']))
             else:
                 print("=> no checkpoint found at '{}'".format(self.params.resume_checkpoints))
+                logger.info("=> no checkpoint found at '{}'".format(self.params.resume_checkpoints))
         return start_epoch
 
     def save_checkpoint(self,state, epoch_idx):
-        saving_checkpoint_file_folder = '{}/{}/'.format(self.params.out_model,
-                                                        self.params.log_path.split('/')[-1])
+        saving_checkpoint_file_folder = os.path.join(self.params.out_model, self.params.log_path.split('/')[-1])
         if not exists(saving_checkpoint_file_folder):
             mkdir(saving_checkpoint_file_folder)
-        filename = os.path.join(saving_checkpoint_file_folder,'%s_epoch_%d.pth.tar'.format(self.params.name, epoch_idx))
+        filename = os.path.join(saving_checkpoint_file_folder,'{}_epoch_{}.pth.tar'.format(self.params.name, epoch_idx))
         torch.save(state, filename)
+        logger.info("[Checkpoints] Epoch {}, saving to {}".format(state['epoch'], filename))
 
-    # def end_writer(self):
+# def end_writer(self):
     #     self.swriter.close()

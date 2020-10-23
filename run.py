@@ -9,6 +9,7 @@ import random
 from datasets import *
 from models import *
 from experiments import *
+from utils.utils import setup_default_logging
 
 if __name__ == '__main__':
     #### Error: Initializing libiomp5.dylib, but found libiomp5.dylib already initialized.###
@@ -32,6 +33,10 @@ if __name__ == '__main__':
     CONFIG = edict(config_file)
     print('==> CONFIG is: \n', CONFIG, '\n')
 
+    # initial logging file
+    logger = setup_default_logging(CONFIG, string = 'Train')
+    logger.info(CONFIG)
+
     # # For reproducibility, set random seed
     if CONFIG.Logging.seed == 'None':
         CONFIG.Logging.seed = random.randint(1, 10000)
@@ -48,6 +53,7 @@ if __name__ == '__main__':
 
     # build wideresnet
     model = WRN_MODELS[CONFIG.MODEL.name](CONFIG.MODEL)
+    logger.info("[Model] Building model {}".format(CONFIG.MODEL.name))
 
     if CONFIG.EXPERIMENT.used_gpu:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -56,7 +62,12 @@ if __name__ == '__main__':
     experiment = EXPERIMENT[CONFIG.EXPERIMENT.name](model,CONFIG.EXPERIMENT)
     experiment.labelled_loader(labeled_training_dataset)
     if CONFIG.DATASET.loading_data != 'LOAD_ORIGINAL' and unlabeled_training_dataset != None:
-        experiment.unlabelled_loader(unlabeled_training_dataset)
-    experiment.test_loader(test_dataset)
+        experiment.unlabelled_loader(unlabeled_training_dataset, CONFIG.DATASET.mu)
+    experiment.valid_loader(test_dataset)
     experiment.fitting()
     print("======= Training done =======")
+    logger.info("======= Training done =======")
+    experiment.test_loader(test_dataset)
+    experiment.testing_step()
+    print("======= Testing done =======")
+    logger.info("======= Testing done =======")

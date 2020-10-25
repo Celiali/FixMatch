@@ -14,7 +14,7 @@ from torchvision.datasets.cifar import CIFAR100
 
 from augmentations.randaugment import RandAugment
 from augmentations.ctaugment import *
-from test_dataloader import *
+# from test_dataloader import *
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,6 @@ class LoadDataset_Label_Unlabel(object):
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
                         std=TRANSFORM_CIFAR[self.name]['std'],)])
         ########## Correction ##########
-        # Translation is not RandomCrop but RandomAffine.
         # The paper didn't clearly show the probability of translation, I set p=0.5 here
         
 
@@ -73,7 +72,7 @@ class LoadDataset_Label_Unlabel(object):
         # self.get_dataset()
 
     def get_dataset(self):
-        data_dir = os.path.join(hydra.utils.get_original_cwd(), self.datapath, 'cifar-%s-batches-py' % self.name[5:])
+        data_dir = os.path.join(os.getcwd(), self.datapath, 'cifar-%s-batches-py' % self.name[5:])
         downloadFlag = not os.path.exists(data_dir)
 
         try:
@@ -95,14 +94,16 @@ class LoadDataset_Label_Unlabel(object):
 
         # self.get_dataloader(train_sup_dataset, train_unsup_dataset, testset)
 
-    def sampling(self, num_expand_x, trainset): # num_expand_x: 2^13 #expected total number of labeled training samples
+    def sampling(self, num_expand_x, trainset): # num_expand_x: 2^16 #expected total number of labeled training samples
         num_per_class = self.params.label_num // self.num_classes
         labels = np.array(trainset.targets)
 
         # sample labeled
         categorized_idx = [list(np.where(labels == i)[0]) for i in range(self.num_classes)] #[[], [],]
         labeled_idx = [idx for idxs in categorized_idx 
-                            for idx in np.random.choice(idxs, num_per_class)]
+                            for idx in np.random.choice(idxs, num_per_class, replace=False)]
+        # the default value is "replace = True" for np.random.choice, but we don't want to sample the same image twice
+        # in labeled data. Thus, I add replace = False.
 
         # expand the number of labeled to num_expand_x, unlabeled to num_expand_x * 7
         exapand_labeled = num_expand_x // len(labeled_idx)
@@ -275,5 +276,5 @@ if __name__ == '__main__':
         # for name, ds in zip(['train labeled', 'train unlabled', 'test'], dataset):
         #     showImg(ds, name, index=0)
         # plt.show()
-        test_dataloader(data,cfg,TRANSFORM_CIFAR)
+        # test_dataloader(data,cfg,TRANSFORM_CIFAR)
     main()

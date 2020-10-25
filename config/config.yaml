@@ -9,6 +9,7 @@ DATASET:
   mu: 7
   batch_size: 64
   num_workers: 4
+  batch_balanced: False
 
 MODEL:
   name: 'WideResNet_Lk'             #---- 'WideResNet'---'WideResNet_Lk'-------
@@ -41,6 +42,9 @@ EXPERIMENT:
 
   resume: False
   resume_checkpoints: './checkpoints/exp1/xxx.pth'
+
+  save_cfmatrix: true
+  batch_balanced: False 
 
 Logging:
   name: "FM"

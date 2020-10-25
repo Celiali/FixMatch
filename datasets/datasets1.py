@@ -1,6 +1,9 @@
 import logging
 import os
 import sys
+from collections import defaultdict
+
+from torch.utils.data.sampler import Sampler
 sys.path.append(os.getcwd())
 
 import numpy as np
@@ -8,6 +11,7 @@ import ignite.distributed as idist
 import hydra
 
 from torch.utils.data import Dataset, SequentialSampler
+from torch._six import int_classes as _int_classes
 from torchvision import datasets
 from torchvision import transforms as T
 from torchvision.datasets.cifar import CIFAR100
@@ -169,32 +173,85 @@ class LoadDataset_Label_Unlabel(object):
 
     def get_dataloader(self):
         train_sup_dataset, train_unsup_dataset, testset = self.get_dataset()
+        if self.params.batch_balanced:
+            kwargs = dict(
+                pin_memory='cuda' in idist.device().type,
+                num_workers=self.params.num_workers,
+            )
+        else:
+            kwargs = dict(
+                pin_memory='cuda' in idist.device().type,
+                num_workers=self.params.num_workers,
+                shuffle=True,
+                batch_size=self.params.batch_size,
+            )
 
-        self.loader['labeled'] = idist.auto_dataloader(
-            train_sup_dataset,
-            # sampler=train_sampler(labeled_dataset),
-            shuffle=True,
-            pin_memory='cuda' in idist.device().type,
-            batch_size=self.params.batch_size,
-            num_workers=self.params.num_workers,
-            drop_last=True)
+        self.loader['labeled'] = idist.auto_dataloader(train_sup_dataset, **kwargs, 
+                batch_sampler= BatchWeightedRandomSampler(train_sup_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,
+        
+        )
 
-        self.loader['unlabeled'] = idist.auto_dataloader(
-            train_unsup_dataset,
-            # sampler=train_sampler(unlabeled_dataset),
-            shuffle=True,
-            pin_memory='cuda' in idist.device().type,
-            batch_size=self.params.batch_size*self.params.mu,
-            num_workers=self.params.num_workers,
-            drop_last=True)
+        self.loader['unlabeled'] = idist.auto_dataloader(train_unsup_dataset, **kwargs,
+            batch_sampler= BatchWeightedRandomSampler(train_unsup_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,
+        )
 
-        self.loader['test'] = idist.auto_dataloader(
-            testset,
-            pin_memory='cuda' in idist.device().type,
-            sampler=SequentialSampler(testset),
-            batch_size=self.params.batch_size,
-            num_workers=self.params.num_workers)
+        self.loader['test'] = idist.auto_dataloader(testset, **kwargs, sampler=SequentialSampler(testset))
         return self.loader
+
+
+class BatchWeightedRandomSampler(Sampler):
+    '''Samples elements for a batch with given probabilites of each element'''
+    def __init__(self,  data_source, batch_size, drop_last=False):
+        if not isinstance(batch_size, _int_classes) or isinstance(batch_size, bool) or \
+                batch_size <= 0:
+            raise ValueError("batch_size should be a positive integer value, "
+                             "but got batch_size={}".format(batch_size))
+        if not isinstance(drop_last, bool):
+            raise ValueError("drop_last should be a boolean value, but got "
+                             "drop_last={}".format(drop_last))
+        self.targets = np.array(data_source.dataset.targets)[data_source.indexs]
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+
+    def __iter__(self):
+        nclass = max(self.targets) + 1
+        sample_distrib = np.array([len(np.where(self.targets==i)[0]) for i in range(nclass)])
+        sample_distrib = sample_distrib/sample_distrib.max()
+
+        class_id = defaultdict(list)
+        for idx, c in enumerate(self.targets):
+            class_id[c].append(idx)
+
+        assert min(class_id.keys()) == 0 and max(class_id.keys()) == (nclass - 1)
+        class_id = [np.array(class_id[i], dtype=np.int64) for i in range(nclass)]
+
+        for i in range(nclass):
+            np.random.shuffle(class_id[i])
+
+        # rerange indexs following the rule so that labels are ranged like: 0,1,....9,0,....9,...
+        # adopted from https://github.com/google-research/fixmatch/blob/79f9fd3e6267035d685864beaec40dd45408ecb0/scripts/create_split.py#L87
+        npos = np.zeros(nclass, np.int64)
+        label = []
+        for i in range(len(self.targets)):
+            c = np.argmax(sample_distrib - npos / max(npos.max(), 1))
+            label.append(class_id[c][npos[c]]) # the indexs of examples
+            npos[c] += 1
+
+        batch = []
+        for idx in label:
+            batch.append(idx)
+            if len(batch) == self.batch_size:
+                yield batch
+                batch = []
+        if len(batch) > 0 and not self.drop_last:
+            yield batch
+
+    def __len__(self):
+        if self.drop_last:
+            return len(self.sampler) // self.batch_size
+        else:
+            return (len(self.sampler) + self.batch_size - 1) // self.batch_size
+    
 
 
 class TransformFix(object):

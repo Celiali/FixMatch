@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from os.path import exists
 from os import mkdir
-import shutil
 import logging
 
 import torch
@@ -16,8 +15,9 @@ import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 import ignite.distributed as idist
 
-from utils.utils import accuracy,AverageMeter
+from utils.utils import accuracy,AverageMeter, save_cfmatrix
 from utils.ema import EMA
+from datasets.datasets1 import BatchWeightedRandomSampler
 
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
@@ -83,6 +83,12 @@ class FMExperiment(object):
         labelled_losses_meter = AverageMeter()
         unlabeled_losses_meter = AverageMeter() # pseudo loss for unlabeled data with strong augmentation
         mask_meter = AverageMeter()
+
+        # path for saving confusion matrix
+        now = int(round(time.time()*1000))
+        now = time.strftime('%Y-%m-%d_%H:%M:%S',time.localtime(now/1000))
+        save_to = self.params.log_path + '/%s_'%now
+
         #### optional value cal
         unlabeled_losses_real_strong_meter = AverageMeter()# real loss for unlabeled data with strong augmentation
         corrrect_unlabeled_num_meter = AverageMeter()#Num of Correct Predicted for Unlabelled data
@@ -156,6 +162,12 @@ class FMExperiment(object):
             unlabelled_weak_top1_acc_meter.update(weak_top1_acc.item())
             unlabelled_weak_top5_acc_meter.update(weak_top5_acc.item())
             batch_time_meter.update(time.time() - start)
+
+            # save confusion matrix every 10 steps
+            if self.params.save_cfmatrix and batch_idx % 10 == 0: #                 
+                outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
+                save_cfmatrix(outputs_labelled, pseudo_label, mask, outputs_labelled, targets_unlabelled, save_to=save_to, comment='step%d'%batch_idx)
+                
 
         # updating ema model (buffer)
         if self.ema:
@@ -247,6 +259,8 @@ class FMExperiment(object):
 
         prev_lr = np.inf
         for epoch_idx in range(start_epoch, self.params.epoch_n):
+            if epoch_idx > 0:
+                self.params.save_cfmatrix = False
             # turn on training
             start = time.time()
             train_loss,labelled_loss,unlabeled_loss,mask = self.train_step()
@@ -312,19 +326,30 @@ class FMExperiment(object):
 
     def labelled_loader(self, labelled_training_dataset):
         self.num_train = len(labelled_training_dataset)
-        self.labelled_loader = DataLoader(labelled_training_dataset,
-                                           batch_size=self.params.batch_size,
-                                           shuffle=True,
-                                           drop_last=True)
+        if self.params.batch_balanced:
+            kwargs = dict(
+                batch_size=self.params.batch_size,
+                shuffle=True,
+                drop_last=True
+            )
+        else: kwargs ={}
+        self.labelled_loader = DataLoader(labelled_training_dataset, **kwargs,
+                batch_sampler= BatchWeightedRandomSampler(labelled_training_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,
+                                           )
         logger.info("Loading Labelled Loader")
         return
 
     def unlabelled_loader(self,unlabelled_training_dataset, mu):
         self.num_valid = len(unlabelled_training_dataset)
-        self.unlabelled_loader = DataLoader(unlabelled_training_dataset,
-                                           batch_size=self.params.batch_size * mu,
-                                           shuffle=True,
-                                           drop_last=True)
+        if self.params.batch_balanced:
+            kwargs = dict(
+                batch_size=self.params.batch_size,
+                shuffle=True,
+                drop_last=True
+            )
+        else: kwargs ={}
+        self.unlabelled_loader = DataLoader(unlabelled_training_dataset, **kwargs,
+                batch_sampler= BatchWeightedRandomSampler(unlabelled_training_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,)
         logger.info("Loading Unlabelled Loader")
         return
 

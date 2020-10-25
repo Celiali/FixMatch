@@ -10,7 +10,7 @@ import numpy as np
 import ignite.distributed as idist
 import hydra
 
-from torch.utils.data import Dataset, SequentialSampler, WeightedRandomSampler, BatchSampler, DataLoader, RandomSampler
+from torch.utils.data import Dataset, SequentialSampler
 from torch._six import int_classes as _int_classes
 from torchvision import datasets
 from torchvision import transforms as T

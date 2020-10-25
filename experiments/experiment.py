@@ -7,6 +7,7 @@ from os.path import exists
 from os import mkdir
 import shutil
 import logging
+from numpy.lib import utils
 
 import torch
 from torch import optim
@@ -16,7 +17,7 @@ import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 import ignite.distributed as idist
 
-from utils.utils import accuracy,AverageMeter
+from utils.utils import accuracy,AverageMeter, save_cfmatrix
 from utils.ema import EMA
 
 def get_cosine_schedule_with_warmup(optimizer,
@@ -157,6 +158,17 @@ class FMExperiment(object):
             unlabelled_weak_top5_acc_meter.update(weak_top5_acc.item())
             batch_time_meter.update(time.time() - start)
 
+            # save confusion matrix every 10 steps
+            if self.params.save_cfmatrix and batch_idx % 10 == 0: # 
+                now = int(round(time.time()*1000))
+                now = time.strftime('%Y-%m-%d_%H:%M:%S',time.localtime(now/1000))
+                save_to = self.params.log_path + '/%s_'%now
+                outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
+                save_cfmatrix(outputs_labelled, targets_labelled, save_to=save_to + 'cf_matrix_labeled.txt', comment='step%d'%batch_idx)
+                save_cfmatrix(pseudo_label, targets_unlabelled, save_to=save_to + 'cf_matrix_unlabeled_preT.txt', comment='step%d'%batch_idx)
+                save_cfmatrix(pseudo_label*mask, targets_unlabelled, save_to=save_to + 'cf_matrix_unlabeled_afterT.txt', comment='step%d'%batch_idx)
+                
+
         # updating ema model (buffer)
         if self.ema:
             self.ema_model.update_buffer()
@@ -247,6 +259,8 @@ class FMExperiment(object):
 
         prev_lr = np.inf
         for epoch_idx in range(start_epoch, self.params.epoch_n):
+            if epoch_idx > 0:
+                self.params.save_cfmatrix = False
             # turn on training
             start = time.time()
             train_loss,labelled_loss,unlabeled_loss,mask = self.train_step()

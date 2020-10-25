@@ -42,6 +42,8 @@ EXPERIMENT:
   resume: False
   resume_checkpoints: './checkpoints/exp1/xxx.pth'
 
+  save_cfmatrix: true 
+
 Logging:
   name: "FM"
   seed: 1265                    #---- None ---

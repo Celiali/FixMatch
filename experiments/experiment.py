@@ -84,6 +84,11 @@ class FMExperiment(object):
         labelled_losses_meter = AverageMeter()
         unlabeled_losses_meter = AverageMeter() # pseudo loss for unlabeled data with strong augmentation
         mask_meter = AverageMeter()
+        
+        # path for saving confusion matrix
+        now = int(round(time.time()*1000))
+        now = time.strftime('%Y-%m-%d_%H:%M:%S',time.localtime(now/1000))
+        save_to = self.params.log_path + '/%s_'%now
         #### optional value cal
         unlabeled_losses_real_strong_meter = AverageMeter()# real loss for unlabeled data with strong augmentation
         corrrect_unlabeled_num_meter = AverageMeter()#Num of Correct Predicted for Unlabelled data
@@ -160,9 +165,6 @@ class FMExperiment(object):
 
             # save confusion matrix every 10 steps
             if self.params.save_cfmatrix and batch_idx % 10 == 0: # 
-                now = int(round(time.time()*1000))
-                now = time.strftime('%Y-%m-%d_%H:%M:%S',time.localtime(now/1000))
-                save_to = self.params.log_path + '/%s_'%now
                 outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
                 save_cfmatrix(outputs_labelled, targets_labelled, save_to=save_to + 'cf_matrix_labeled.txt', comment='step%d'%batch_idx)
                 save_cfmatrix(pseudo_label, targets_unlabelled, save_to=save_to + 'cf_matrix_unlabeled_preT.txt', comment='step%d'%batch_idx)

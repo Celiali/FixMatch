@@ -63,7 +63,7 @@ if __name__ == '__main__':
     experiment.labelled_loader(labeled_training_dataset)
     if CONFIG.DATASET.loading_data != 'LOAD_ORIGINAL' and unlabeled_training_dataset != None:
         experiment.unlabelled_loader(unlabeled_training_dataset, CONFIG.DATASET.mu)
-    experiment.valid_loader(test_dataset)
+    experiment.validation_loader(test_dataset)
     experiment.fitting()
     print("======= Training done =======")
     logger.info("======= Training done =======")

@@ -3,6 +3,8 @@ import logging
 import os
 from datetime import datetime
 import sys
+from sklearn.metrics import confusion_matrix
+import numpy as np
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k
@@ -70,3 +72,10 @@ def setup_default_logging(params, string = 'Train', default_level=logging.INFO,
     logger.addHandler(console_handler)
 
     return logger
+
+# Calculate confusion matrix (row: true classes), precesion and recall
+def save_cfmatrix(y_pred, y_true, save_to=None, comment=None): 
+    cfmatrix = confusion_matrix(y_true.detach(), y_pred.detach()) # 10 x 10
+    f = open(save_to, 'ab')
+    np.savetxt(f, cfmatrix, fmt='%.2f', header=comment)
+    f.close()

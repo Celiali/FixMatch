@@ -150,7 +150,7 @@ class RandAugment(object):
                 param = float_param(level, range_min, range_max)
                 assert range_min <= param <= range_max
             img = op_name(img, param)
-            print("{} {}".format(op_name, param))
+            # print("{} {}".format(op_name, param))
         img = CutoutAbs(img, 16)
         return img
 

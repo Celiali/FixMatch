@@ -14,7 +14,7 @@ from torchvision.datasets.cifar import CIFAR100
 
 from augmentations.randaugment import RandAugment
 from augmentations.ctaugment import *
-from test_dataloader import *
+from datasets.test_dataloader import *
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ class LoadDataset_Label_Unlabel(object):
         # self.get_dataset()
 
     def get_dataset(self):
-        data_dir = os.path.join(hydra.utils.get_original_cwd(), self.datapath, 'cifar-%s-batches-py' % self.name[5:])
+        data_dir = os.path.join(os.getcwd(), self.datapath, 'cifar-%s-batches-py' % self.name[5:])
         downloadFlag = not os.path.exists(data_dir)
 
         try:

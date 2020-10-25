@@ -17,6 +17,7 @@ import ignite.distributed as idist
 
 from utils.utils import accuracy,AverageMeter, save_cfmatrix
 from utils.ema import EMA
+from datasets.datasets1 import BatchWeightedRandomSampler
 
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
@@ -325,19 +326,30 @@ class FMExperiment(object):
 
     def labelled_loader(self, labelled_training_dataset):
         self.num_train = len(labelled_training_dataset)
-        self.labelled_loader = DataLoader(labelled_training_dataset,
-                                           batch_size=self.params.batch_size,
-                                           shuffle=True,
-                                           drop_last=True)
+        if self.params.batch_balanced:
+            kwargs = dict(
+                batch_size=self.params.batch_size,
+                shuffle=True,
+                drop_last=True
+            )
+        else: kwargs ={}
+        self.labelled_loader = DataLoader(labelled_training_dataset, **kwargs,
+                batch_sampler= BatchWeightedRandomSampler(labelled_training_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,
+                                           )
         logger.info("Loading Labelled Loader")
         return
 
     def unlabelled_loader(self,unlabelled_training_dataset, mu):
         self.num_valid = len(unlabelled_training_dataset)
-        self.unlabelled_loader = DataLoader(unlabelled_training_dataset,
-                                           batch_size=self.params.batch_size * mu,
-                                           shuffle=True,
-                                           drop_last=True)
+        if self.params.batch_balanced:
+            kwargs = dict(
+                batch_size=self.params.batch_size,
+                shuffle=True,
+                drop_last=True
+            )
+        else: kwargs ={}
+        self.unlabelled_loader = DataLoader(unlabelled_training_dataset, **kwargs,
+                batch_sampler= BatchWeightedRandomSampler(unlabelled_training_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,)
         logger.info("Loading Unlabelled Loader")
         return
 

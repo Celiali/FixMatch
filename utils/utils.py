@@ -80,12 +80,12 @@ def save_cfmatrix(y_labeled, y_pseudo, mask, y_true_labeled, y_true_unlabeled, s
     cfmatrix = {}
     cfmatrix['labled'] = confusion_matrix(y_true_labeled.cpu().detach(), y_labeled.cpu().detach(), labels=nclass)
     cfmatrix['unlabled_pre'] = confusion_matrix(y_true_unlabeled.cpu().detach(), y_pseudo.cpu().detach(), labels=nclass)
-    valid_idx = np.where(mask>0)
+    valid_idx = np.where(mask.cpu()>0)
     if valid_idx[0].size > 0:
         cfmatrix['unlabled_after'] = confusion_matrix(y_true_unlabeled.cpu().detach()[valid_idx], y_pseudo.cpu().detach()[valid_idx], labels=nclass)
     else: 
-        cfmatrix['unlabled_after'] = np.array([])
+        cfmatrix['unlabled_after'] = np.zeros((10, 10))
     for name, matrix in cfmatrix.items():
-        f = open(save_to + 'cf_matrix_%s'%name, 'ab')
+        f = open(save_to + 'cf_matrix_%s.txt'%name, 'ab')
         np.savetxt(f, matrix, fmt='%.2f', header=comment)
         f.close()

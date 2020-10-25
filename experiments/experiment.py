@@ -5,9 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from os.path import exists
 from os import mkdir
-import shutil
 import logging
-from numpy.lib import utils
 
 import torch
 from torch import optim

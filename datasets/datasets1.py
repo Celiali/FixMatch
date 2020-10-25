@@ -124,7 +124,7 @@ class LoadDataset_Label_Unlabel(object):
 
         # expand the number of labeled to num_expand_x, unlabeled to num_expand_x * 7
         exapand_labeled = num_expand_x // len(labeled_idx)  # len(labeled_idx) = 40 00
-        exapand_unlabled = num_expand_x * self.params.mu // labels.size
+        exapand_unlabled = num_expand_x * self.params.mu // unlabeled_idx.size #  labels.size
 
         # labels.size = 50 000, all the samples are used in the unlabel data set
 

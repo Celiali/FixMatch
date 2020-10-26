@@ -77,8 +77,8 @@ class LoadDataset_Label_Unlabel(object):
         # self.get_dataset()
 
     def get_dataset(self):
-        data_dir = os.path.join(hydra.utils.get_original_cwd(), self.datapath, 'cifar-%s-batches-py' % self.name[5:])
-        # os.getcwd()
+        data_dir = os.path.join(os.getcwd(), self.datapath, 'cifar-%s-batches-py' % self.name[5:])
+        # os.getcwd()hydra.utils.get_original_cwd()
         downloadFlag = not os.path.exists(data_dir)
 
         try:

@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from os.path import exists
 from os import mkdir
 import logging
+from numpy.core.multiarray import where
 
 import torch
 from torch import optim
@@ -102,6 +103,8 @@ class FMExperiment(object):
         for batch_idx, (data_labelled, data_unlabelled) in enumerate(train_loader):
             inputs_labelled, targets_labelled = data_labelled
             (inputs_unlabelled_weak, inputs_unlabelled_strong), targets_unlabelled = data_unlabelled
+            # print('targets_labeled\n', [targets_labelled[np.where(targets_labelled==i)].shape for i in range(10)])
+            # print('targets_unlabelled\n', [targets_unlabelled[np.where(targets_unlabelled==i)].shape for i in range(10)])
             if self.used_gpu:
                 inputs_labelled = inputs_labelled.to(device = self.device)
                 targets_labelled = targets_labelled.to(device=self.device)
@@ -166,7 +169,7 @@ class FMExperiment(object):
             # save confusion matrix every 10 steps
             if self.params.save_cfmatrix and batch_idx % 10 == 0: #                 
                 outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
-                save_cfmatrix(outputs_labelled, pseudo_label, mask, outputs_labelled, targets_unlabelled, save_to=save_to, comment='step%d'%batch_idx)
+                save_cfmatrix(outputs_labelled, pseudo_label, mask, targets_labelled, targets_unlabelled, save_to=save_to, comment='step%d'%batch_idx)
                 
 
         # updating ema model (buffer)
@@ -259,7 +262,7 @@ class FMExperiment(object):
 
         prev_lr = np.inf
         for epoch_idx in range(start_epoch, self.params.epoch_n):
-            if epoch_idx > 0:
+            if epoch_idx > 0 and self.params.save_cfmatrix:
                 self.params.save_cfmatrix = False
             # turn on training
             start = time.time()
@@ -328,14 +331,15 @@ class FMExperiment(object):
         self.num_train = len(labelled_training_dataset)
         if self.params.batch_balanced:
             kwargs = dict(
+                batch_sampler= BatchWeightedRandomSampler(labelled_training_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,
+            )
+        else: 
+            kwargs =dict(
                 batch_size=self.params.batch_size,
                 shuffle=True,
                 drop_last=True
             )
-        else: kwargs ={}
-        self.labelled_loader = DataLoader(labelled_training_dataset, **kwargs,
-                batch_sampler= BatchWeightedRandomSampler(labelled_training_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,
-                                           )
+        self.labelled_loader = DataLoader(labelled_training_dataset, **kwargs)
         logger.info("Loading Labelled Loader")
         return
 
@@ -343,13 +347,15 @@ class FMExperiment(object):
         self.num_valid = len(unlabelled_training_dataset)
         if self.params.batch_balanced:
             kwargs = dict(
-                batch_size=self.params.batch_size,
-                shuffle=True,
-                drop_last=True
+                batch_sampler= BatchWeightedRandomSampler(unlabelled_training_dataset, batch_size=self.params.batch_size * mu) if self.params.batch_balanced else None,
             )
-        else: kwargs ={}
-        self.unlabelled_loader = DataLoader(unlabelled_training_dataset, **kwargs,
-                batch_sampler= BatchWeightedRandomSampler(unlabelled_training_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,)
+        else: 
+            kwargs =dict(
+                batch_size=self.params.batch_size * mu,
+                shuffle=True,
+                drop_last=True,
+            )
+        self.unlabelled_loader = DataLoader(unlabelled_training_dataset, **kwargs)
         logger.info("Loading Unlabelled Loader")
         return
 

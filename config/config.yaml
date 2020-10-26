@@ -43,8 +43,8 @@ EXPERIMENT:
   resume: False
   resume_checkpoints: './checkpoints/exp1/xxx.pth'
 
-  save_cfmatrix: true
-  batch_balanced: False 
+  save_cfmatrix: True
+  batch_balanced: True 
 
 Logging:
   name: "FM"

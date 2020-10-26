@@ -141,16 +141,16 @@ class FMExperiment(object):
             # updating ema model (params)
             if self.ema:
                 self.ema_model.update_params()
-                logger.info("[EMA] update params()")
+                # logger.info("[EMA] update params()")
 
             #### optional value cal
             # true loss for unlabelled data with strong augmentation --- without any threshold
             loss_unlabelled_true_strong = F.cross_entropy(outputs_unlabelled_strong, targets_unlabelled)
-            #TODO: correct predicted num --- with threshold
+            # correct predicted num --- with threshold
             corrrect_unlabeled_num = ((pseudo_label == targets_unlabelled).float() * mask).sum()
             # numbers of predicted pro above threshold
             pro_above_threshold_num = mask.sum()
-            # TODO:  pseudo label accuracy are cal without threshold
+            # pseudo label accuracy are cal without threshold
             weak_top1_acc,weak_top5_acc = accuracy(outputs_unlabelled_weak,targets_unlabelled, topk=(1,5))
 
             ############ update recording #################
@@ -158,7 +158,7 @@ class FMExperiment(object):
             labelled_losses_meter.update(loss_labelled.item())
             unlabeled_losses_meter.update(loss_unlabelled_guess.item())
             mask_meter.update(mask.mean().item())
-            #### optional value cal TODO: without saving
+            #### optional value cal
             unlabeled_losses_real_strong_meter.update(loss_unlabelled_true_strong.item())
             corrrect_unlabeled_num_meter.update(corrrect_unlabeled_num.item())
             pro_above_threshold_num_meter.update(pro_above_threshold_num.item())
@@ -170,14 +170,14 @@ class FMExperiment(object):
             if self.params.save_cfmatrix and batch_idx % 10 == 0: #                 
                 outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
                 save_cfmatrix(outputs_labelled, pseudo_label, mask, targets_labelled, targets_unlabelled, save_to=save_to, comment='step%d'%batch_idx)
-                
 
         # updating ema model (buffer)
         if self.ema:
             self.ema_model.update_buffer()
             logger.info("[EMA] update buffer()")
 
-        return train_losses_meter.avg,labelled_losses_meter.avg,unlabeled_losses_meter.avg,mask_meter.avg
+        return train_losses_meter.avg,labelled_losses_meter.avg,unlabeled_losses_meter.avg,mask_meter.avg,unlabeled_losses_real_strong_meter.avg,\
+               corrrect_unlabeled_num_meter.sum,pro_above_threshold_num_meter.sum,unlabelled_weak_top1_acc_meter.avg,unlabelled_weak_top5_acc_meter.avg
 
     def test_step(self):
         logger.info("***** Running testing *****")
@@ -266,7 +266,8 @@ class FMExperiment(object):
                 self.params.save_cfmatrix = False
             # turn on training
             start = time.time()
-            train_loss,labelled_loss,unlabeled_loss,mask = self.train_step()
+            train_loss,labelled_loss,unlabeled_loss,mask,unlabeled_losses_real_strong,\
+               corrrect_unlabeled_num,pro_above_threshold_num,unlabelled_weak_top1_acc,unlabelled_weak_top5_acc = self.train_step()
             end = time.time()
             print("epoch {}: use {} seconds".format(epoch_idx, end - start))
 
@@ -294,23 +295,32 @@ class FMExperiment(object):
             self.swriter.add_scalars('train/lr', {'Current Lr': cur_lr}, epoch_idx)
             self.swriter.add_scalars('test/accuracy', {'Top1': raw_top1_acc, 'Top5': raw_top5_acc}, epoch_idx)
             if self.ema:
-                self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'raw_test_loss': raw_test_loss,
-                                                        'ema_test_loss': ema_test_loss}, epoch_idx)
-                self.swriter.add_scalars('test ema/accuracy', {'Top1': ema_top1_acc, 'Top5': ema_top5_acc}, epoch_idx)
+                self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'raw_test_loss': raw_test_loss,}, epoch_idx)
+                self.swriter.add_scalars('train_w_ema/loss', {'train_loss': train_loss, 'ema_test_loss': ema_test_loss}, epoch_idx)
+                self.swriter.add_scalars('test_w_ema/accuracy', {'Top1': ema_top1_acc, 'Top5': ema_top5_acc}, epoch_idx)
+                logger.info("[EMA] Epoch {}.[Train] time:{} seconds, lr:{:.4f}, train_loss: {:.4f}, "
+                            "unlabeled_losses_real_strong:{:.4f},corrrect_unlabeled_num:{},pro_above_threshold_num:{},"
+                            "unlabelled_weak_top1_acc:{},unlabelled_weak_top5_acc:{}  ".format(epoch_idx, end - start,
+                                                                                               cur_lr, train_loss,
+                                                                                               unlabeled_losses_real_strong,
+                                                                                               corrrect_unlabeled_num,
+                                                                                               pro_above_threshold_num,
+                                                                                               unlabelled_weak_top1_acc,
+                                                                                               unlabelled_weak_top5_acc))
                 logger.info(
-                    "[EMA] Epoch {}. time:{} seconds, lr:{:.4f}, "
-                    "train_loss: {:.4f}, raw_testing_loss: {:.4f}, raw test Top1 acc:{}, raw test Top5 acc: {}, "
-                    " ema_testing_loss: {:.4f}, ema test Top1 acc:{}, ema test Top5 acc: {}".format(
-                        epoch_idx, end - start, cur_lr,
-                        train_loss, raw_test_loss, raw_top1_acc, raw_top5_acc,
-                        ema_test_loss, ema_top1_acc, ema_top5_acc))
+                    "[EMA] Epoch {}. [Validation] raw_testing_loss: {:.4f}, raw test Top1 acc:{}, raw test Top5 acc: {}, ema_testing_loss: {:.4f}, ema test Top1 acc:{}, ema test Top5 acc: {}".format(
+                        epoch_idx, raw_test_loss, raw_top1_acc, raw_top5_acc, ema_test_loss, ema_top1_acc, ema_top5_acc))
 
             else:   # if ema is not used ; save the infor without ema
                 self.swriter.add_scalars('train/loss', {'train_loss': train_loss, 'test_loss': raw_test_loss,}, epoch_idx)
                 logger.info(
-                    "[no EMA] Epoch {}. time:{} seconds, lr:{:.4f}, "
-                    "train_loss: {:.4f}, testing_loss: {:.4f}, test Top1 acc:{}, test Top5 acc: {}".format(
-                        epoch_idx, end - start, cur_lr, train_loss, raw_test_loss, raw_top1_acc, raw_top5_acc))
+                    "[no EMA] Epoch {}. [Train] time:{} seconds, lr:{:.4f}, "
+                    "train_loss: {:.4f}, unlabeled_losses_real_strong:{:.4f},"
+                    "corrrect_unlabeled_num:{},pro_above_threshold_num:{},"
+                    "unlabelled_weak_top1_acc:{},unlabelled_weak_top5_acc:{}  ".format(epoch_idx, end - start, cur_lr, train_loss,
+                                 unlabeled_losses_real_strong, corrrect_unlabeled_num,pro_above_threshold_num,unlabelled_weak_top1_acc,unlabelled_weak_top5_acc))
+                logger.info("[no EMA] Epoch {}. [Validation] testing_loss: {:.4f}, test Top1 acc:{}, test Top5 acc: {}".format(epoch_idx,
+                        raw_test_loss, raw_top1_acc, raw_top5_acc))
 
 
             # saving model

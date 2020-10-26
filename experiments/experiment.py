@@ -199,8 +199,8 @@ class FMExperiment(object):
                 acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
                 # update recording
                 test_losses_meter.update(loss.item(), inputs.shape[0])
-                top1_meter.update(acc1[0], inputs.size(0))
-                top5_meter.update(acc5[0], inputs.size(0))
+                top1_meter.update(acc1.item(), inputs.shape[0])
+                top5_meter.update(acc5.item(), inputs.shape[0])
                 batch_time_meter.update(time.time() - start)
 
         return test_losses_meter.avg,top1_meter.avg,top5_meter.avg
@@ -225,8 +225,8 @@ class FMExperiment(object):
                 acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
                 # update recording
                 valid_losses_meter.update(loss.item(), inputs.shape[0])
-                top1_meter.update(acc1[0], inputs.size(0))
-                top5_meter.update(acc5[0], inputs.size(0))
+                top1_meter.update(acc1.item(), inputs.shape[0])
+                top5_meter.update(acc5.item(), inputs.shape[0])
                 batch_time_meter.update(time.time() - start)
         return valid_losses_meter.avg,top1_meter.avg,top5_meter.avg
 
@@ -377,7 +377,7 @@ class FMExperiment(object):
         self.valid_dataloader = DataLoader(valid_dataset,
                                           batch_size=self.params.batch_size,
                                           shuffle=False,
-                                          drop_last=True)
+                                          drop_last=False)
         logger.info("Loading Validation Loader")
         return
 
@@ -386,18 +386,21 @@ class FMExperiment(object):
         self.test_dataloader = DataLoader(test_dataset,
                                           batch_size=self.params.batch_size,
                                           shuffle=False,
-                                          drop_last=True)
+                                          drop_last=False)
         logger.info("Loading Testing Loader")
         return
 
     def load_model(self, mdl_fname, cuda=False):
-        # TODO：not done
         if self.used_gpu:
-            self.model.load_state_dict(torch.load(mdl_fname))
-            self.model.cuda()
+            # Map model to be loaded to specified single gpu.
+            checkpoint = torch.load(mdl_fname, map_location=self.device)
         else:
-            self.model.load_state_dict(torch.load(mdl_fname, map_location='cpu'))
+            checkpoint = torch.load(mdl_fname)
+        self.model.load_state_dict(checkpoint['state_dict'])
+        if self.ema:
+            self.ema_model.load_state_dict(checkpoint['ema_state_dict'])
         self.model.eval()
+        logger.info("Loading previous model")
 
     def resume_model(self):
         # TODO: not test

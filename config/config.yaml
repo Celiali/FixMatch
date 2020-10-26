@@ -41,7 +41,7 @@ EXPERIMENT:
   save_every: 500
 
   resume: False
-  resume_checkpoints: './checkpoints/exp1/xxx.pth'
+  resume_checkpoints: './checkpoints/exp1/FMExperiment_epoch_0.pth.tar'
 
   save_cfmatrix: True
   batch_balanced: True 

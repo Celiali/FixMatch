@@ -262,8 +262,11 @@ class FMExperiment(object):
 
         prev_lr = np.inf
         for epoch_idx in range(start_epoch, self.params.epoch_n):
-            if epoch_idx > 0 and self.params.save_cfmatrix:
+            if epoch_idx == 0 or (epoch_idx + 1) % self.params.save_every == 0:
+                self.params.save_cfmatrix = True
+            else:
                 self.params.save_cfmatrix = False
+
             # turn on training
             start = time.time()
             train_loss,labelled_loss,unlabeled_loss,mask,unlabeled_losses_real_strong,\

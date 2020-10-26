@@ -141,7 +141,7 @@ class FMExperiment(object):
             # updating ema model (params)
             if self.ema:
                 self.ema_model.update_params()
-                logger.info("[EMA] update params()")
+                # logger.info("[EMA] update params()")
 
             #### optional value cal
             # true loss for unlabelled data with strong augmentation --- without any threshold
@@ -167,7 +167,7 @@ class FMExperiment(object):
             batch_time_meter.update(time.time() - start)
 
             # save confusion matrix every 10 steps
-            if self.params.save_cfmatrix and batch_idx % 10 == 0: #                 
+            if self.params.save_cfmatrix and batch_idx % 100 == 0: #                 
                 outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
                 save_cfmatrix(outputs_labelled, pseudo_label, mask, targets_labelled, targets_unlabelled, save_to=save_to, comment='step%d'%batch_idx)
                 
@@ -405,8 +405,10 @@ class FMExperiment(object):
                 self.model.load_state_dict(checkpoint['state_dict'])
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
                 self.scheduler.load_state_dict(checkpoint['scheduler'])
-                if self.ema:
+                if checkpoint['ema_state_dict']:
                     self.ema_model.load_state_dict(checkpoint['ema_state_dict'])
+                elif self.ema:
+                    self.ema_model.load_state_dict(checkpoint['state_dict'])
                 print("=> loaded checkpoint '{}' (epoch {})".format(self.params.resume_checkpoints, checkpoint['epoch']))
                 logger.info("=> loaded checkpoint '{}' (epoch {})".format(self.params.resume_checkpoints, checkpoint['epoch']))
             else:

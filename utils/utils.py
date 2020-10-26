@@ -1,3 +1,4 @@
+from numpy.lib.twodim_base import mask_indices
 import torch
 import logging
 import os
@@ -74,8 +75,17 @@ def setup_default_logging(params, string = 'Train', default_level=logging.INFO,
     return logger
 
 # Calculate confusion matrix (row: true classes), precesion and recall
-def save_cfmatrix(y_pred, y_true, save_to=None, comment=None): 
-    cfmatrix = confusion_matrix(y_true.cpu().detach(), y_pred.cpu().detach()) # 10 x 10
-    f = open(save_to, 'ab')
-    np.savetxt(f, cfmatrix, fmt='%.2f', header=comment)
-    f.close()
+def save_cfmatrix(y_labeled, y_pseudo, mask, y_true_labeled, y_true_unlabeled, save_to=None, comment=None): 
+    nclass = [i for i in range(10)]
+    cfmatrix = {}
+    cfmatrix['labled'] = confusion_matrix(y_true_labeled.cpu().detach(), y_labeled.cpu().detach(), labels=nclass)
+    cfmatrix['unlabled_pre'] = confusion_matrix(y_true_unlabeled.cpu().detach(), y_pseudo.cpu().detach(), labels=nclass)
+    valid_idx = np.where(mask.cpu()>0)
+    if valid_idx[0].size > 0:
+        cfmatrix['unlabled_after'] = confusion_matrix(y_true_unlabeled.cpu().detach()[valid_idx], y_pseudo.cpu().detach()[valid_idx], labels=nclass)
+    else: 
+        cfmatrix['unlabled_after'] = np.zeros((10,10))
+    for name, matrix in cfmatrix.items():
+        f = open(save_to + 'cf_matrix_%s.txt'%name, 'ab')
+        np.savetxt(f, matrix, fmt='%.2f', header=comment)
+        f.close()

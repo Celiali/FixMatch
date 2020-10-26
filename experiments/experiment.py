@@ -84,11 +84,12 @@ class FMExperiment(object):
         labelled_losses_meter = AverageMeter()
         unlabeled_losses_meter = AverageMeter() # pseudo loss for unlabeled data with strong augmentation
         mask_meter = AverageMeter()
-        
+
         # path for saving confusion matrix
         now = int(round(time.time()*1000))
         now = time.strftime('%Y-%m-%d_%H:%M:%S',time.localtime(now/1000))
         save_to = self.params.log_path + '/%s_'%now
+
         #### optional value cal
         unlabeled_losses_real_strong_meter = AverageMeter()# real loss for unlabeled data with strong augmentation
         corrrect_unlabeled_num_meter = AverageMeter()#Num of Correct Predicted for Unlabelled data
@@ -164,11 +165,9 @@ class FMExperiment(object):
             batch_time_meter.update(time.time() - start)
 
             # save confusion matrix every 10 steps
-            if self.params.save_cfmatrix and batch_idx % 10 == 0: # 
+            if self.params.save_cfmatrix and batch_idx % 10 == 0: #                 
                 outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
-                save_cfmatrix(outputs_labelled, targets_labelled, save_to=save_to + 'cf_matrix_labeled.txt', comment='step%d'%batch_idx)
-                save_cfmatrix(pseudo_label, targets_unlabelled, save_to=save_to + 'cf_matrix_unlabeled_preT.txt', comment='step%d'%batch_idx)
-                save_cfmatrix(pseudo_label*mask, targets_unlabelled, save_to=save_to + 'cf_matrix_unlabeled_afterT.txt', comment='step%d'%batch_idx)
+                save_cfmatrix(outputs_labelled, pseudo_label, mask, outputs_labelled, targets_unlabelled, save_to=save_to, comment='step%d'%batch_idx)
                 
 
         # updating ema model (buffer)
@@ -328,19 +327,29 @@ class FMExperiment(object):
 
     def labelled_loader(self, labelled_training_dataset):
         self.num_train = len(labelled_training_dataset)
-        self.labelled_loader = DataLoader(labelled_training_dataset,
-                                           batch_size=self.params.batch_size,
-                                           shuffle=True,
-                                           drop_last=True)
+        if self.params.batch_balanced:
+            kwargs = dict(
+                batch_size=self.params.batch_size,
+                shuffle=True,
+                drop_last=True,
+                batch_sampler= BatchWeightedRandomSampler(labelled_training_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,
+            )
+        else: kwargs ={}
+        self.labelled_loader = DataLoader(labelled_training_dataset, **kwargs)
         logger.info("Loading Labelled Loader")
         return
 
     def unlabelled_loader(self,unlabelled_training_dataset, mu):
         self.num_valid = len(unlabelled_training_dataset)
-        self.unlabelled_loader = DataLoader(unlabelled_training_dataset,
-                                           batch_size=self.params.batch_size * mu,
-                                           shuffle=True,
-                                           drop_last=True)
+        if self.params.batch_balanced:
+            kwargs = dict(
+                batch_size=self.params.batch_size * mu,
+                shuffle=True,
+                drop_last=True,
+                batch_sampler= BatchWeightedRandomSampler(unlabelled_training_dataset, batch_size=self.params.batch_size * mu) if self.params.batch_balanced else None,
+            )
+        else: kwargs ={}
+        self.unlabelled_loader = DataLoader(unlabelled_training_dataset, **kwargs)
         logger.info("Loading Unlabelled Loader")
         return
 

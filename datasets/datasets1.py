@@ -10,7 +10,7 @@ import numpy as np
 import ignite.distributed as idist
 import hydra
 
-from torch.utils.data import Dataset, SequentialSampler, WeightedRandomSampler, BatchSampler, DataLoader, RandomSampler
+from torch.utils.data import Dataset, SequentialSampler
 from torch._six import int_classes as _int_classes
 from torchvision import datasets
 from torchvision import transforms as T
@@ -18,7 +18,7 @@ from torchvision.datasets.cifar import CIFAR100
 
 from augmentations.randaugment import RandAugment
 from augmentations.ctaugment import *
-from datasets.test_dataloader import *
+# from test_dataloader import *
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class LoadDataset_Label_Unlabel(object):
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
                         std=TRANSFORM_CIFAR[self.name]['std'],)])
         ########## Correction ##########
-        # Translation is not RandomCrop but RandomAffine.
+        ########## paper lack of clarification ##########
         # The paper didn't clearly show the probability of translation, I set p=0.5 here
         
 
@@ -77,7 +77,8 @@ class LoadDataset_Label_Unlabel(object):
         # self.get_dataset()
 
     def get_dataset(self):
-        data_dir = os.path.join(os.getcwd(), self.datapath, 'cifar-%s-batches-py' % self.name[5:])
+        rootdir =  hydra.utils.get_original_cwd() if __name__ == '__main__' else os.getcwd()
+        data_dir = os.path.join(rootdir, self.datapath, 'cifar-%s-batches-py' % self.name[5:])
         downloadFlag = not os.path.exists(data_dir)
 
         try:
@@ -91,29 +92,48 @@ class LoadDataset_Label_Unlabel(object):
         self.num_classes = max(testset.targets) + 1
 
         # sampling labeled and unlabeled data
-        labeled_idx, unlabeled_idx = self.sampling(self.params.num_expand_x, trainset)
+        labeled_idx, unlabeled_idx, valid_idx = self.sampling(self.params.num_expand_x, trainset)
 
         # apply transforms
-        labeledSet, unlabeledSet = self.apply_transform(labeled_idx, unlabeled_idx, trainset)
-        return labeledSet, unlabeledSet, testset
+        labeledSet, unlabeledSet, valid_dataset = self.apply_transform(labeled_idx, unlabeled_idx, valid_idx, trainset)
+
+        return labeledSet, unlabeledSet, valid_dataset, testset
 
         # self.get_dataloader(train_sup_dataset, train_unsup_dataset, testset)
 
-    def sampling(self, num_expand_x, trainset): # num_expand_x: 2^13 #expected total number of labeled training samples
+    def get_labeled_valid(self, cat_idx, num_per_class, valid_per_class=500):
+        valid_idx = []
+        labeled_idx = []
+        for idxs in cat_idx:
+            idx = np.random.choice(idxs, num_per_class+valid_per_class, replace=False)
+            labeled_idx= np.concatenate((labeled_idx, idx[:num_per_class]), axis=None)
+            valid_idx = np.concatenate((valid_idx, idx[num_per_class:]), axis=None)
+        # the default value is "replace = True" for np.random.choice, but we don't want to sample the same image twice
+        # in labeled data. Thus, I add replace = False.
+        return list(labeled_idx.astype(int)), list(valid_idx.astype(int))
+
+    def sampling(self, num_expand_x, trainset): # num_expand_x: 2^16 #expected total number of labeled training samples
         num_per_class = self.params.label_num // self.num_classes
         labels = np.array(trainset.targets)
 
         # sample labeled
         categorized_idx = [list(np.where(labels == i)[0]) for i in range(self.num_classes)] #[[], [],]
-        labeled_idx = [idx for idxs in categorized_idx 
-                            for idx in np.random.choice(idxs, num_per_class, replace=False)]
+
+        # Get labeled data and validation data index
+        # The type of labeled_idx should be "list"
+        labeled_idx , valid_idx= self.get_labeled_valid(categorized_idx,num_per_class)
+
+        # Update the training data index since we will not use validation set
+        unlabeled_idx = np.array(np.setdiff1d(np.arange(labels.size), np.array(valid_idx)))
 
         # expand the number of labeled to num_expand_x, unlabeled to num_expand_x * 7
-        exapand_labeled = num_expand_x // len(labeled_idx)
-        exapand_unlabled = num_expand_x * self.params.mu // labels.size
+        exapand_labeled = num_expand_x // len(labeled_idx)  # len(labeled_idx) = 40 00
+        exapand_unlabled = num_expand_x * self.params.mu // unlabeled_idx.size #  labels.size
+
+        # labels.size = 50 000, all the samples are used in the unlabel data set
 
         labeled_idx = labeled_idx * exapand_labeled
-        unlabeled_idx = list(np.arange(labels.size)) * exapand_unlabled # 
+        unlabeled_idx = list(unlabeled_idx) * exapand_unlabled #
 
         if len(labeled_idx) < num_expand_x:
             diff = num_expand_x - len(labeled_idx)
@@ -128,11 +148,13 @@ class LoadDataset_Label_Unlabel(object):
             assert len(unlabeled_idx) == num_expand_x * self.params.mu
 
         logger.info(f"Labeled examples: {len(labeled_idx)}"
-                    f" Unlabeled examples: {len(unlabeled_idx)}")
+                    f" Unlabeled examples: {len(unlabeled_idx)}"
+                    f"Validation examples: {len(valid_idx)}"
+                    )
 
-        return labeled_idx, unlabeled_idx
+        return labeled_idx, unlabeled_idx, valid_idx
 
-    def apply_transform(self, labeled_idx, unlabeled_idx, trainset):
+    def apply_transform(self, labeled_idx, unlabeled_idx, valid_idx, trainset):
         # train_sup_dataset[0]: img, target
         train_sup_dataset = TransformedDataset(
             trainset, labeled_idx,
@@ -141,8 +163,13 @@ class LoadDataset_Label_Unlabel(object):
         # train_unsup_dataset[0]: [weak, strong], target
         train_unsup_dataset = TransformedDataset(
             trainset, unlabeled_idx,
-            transform=self.unlabeled_transform) 
-        return train_sup_dataset, train_unsup_dataset
+            transform=self.unlabeled_transform)
+
+        valid_dataset = TransformedDataset(
+            trainset, valid_idx,
+            transform=self.transform_test)
+
+        return train_sup_dataset, train_unsup_dataset, valid_dataset
 
     def get_dataloader(self):
         train_sup_dataset, train_unsup_dataset, testset = self.get_dataset()
@@ -327,10 +354,9 @@ if __name__ == '__main__':
                     plt.title(name)
         
         data = LoadDataset_Label_Unlabel(cfg.DATASET)
-        dataloader = data.get_dataloader()
-        
-        # for name, ds in zip(['train labeled', 'train unlabled', 'test'], dataset):
-        #     showImg(ds, name, index=0)
-        # plt.show()
+        dataset = data.get_dataset()
+        for name, ds in zip(['train labeled', 'train unlabled', 'test'], dataset):
+            showImg(ds, name, index=0)
+        plt.show()
         # test_dataloader(data,cfg,TRANSFORM_CIFAR)
     main()

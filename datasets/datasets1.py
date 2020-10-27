@@ -77,7 +77,7 @@ class LoadDataset_Label_Unlabel(object):
         # self.get_dataset()
 
     def get_dataset(self):
-        data_dir = os.path.join(os.getcwd(), self.datapath, 'cifar-%s-batches-py' % self.name[5:])
+        data_dir = os.path.join(os.getcwd(), self.datapath)#, 'cifar-%s-batches-py' % self.name[5:])
         # os.getcwd()hydra.utils.get_original_cwd()
         downloadFlag = not os.path.exists(data_dir)
 
@@ -112,6 +112,24 @@ class LoadDataset_Label_Unlabel(object):
         # in labeled data. Thus, I add replace = False.
         return list(labeled_idx.astype(int)), list(valid_idx.astype(int))
 
+    def get_labeled_valid_barely(self, cat_idx, num_per_class, valid_per_class=500):
+        valid_idx = []
+        labeled_idx = []
+
+        selected_idx =[4255, 6446, 8580, 11759, 12598, 29349, 29433, 33759, 35345, 38639]
+        for idxs in cat_idx:
+            for j in range(len(selected_idx)):
+                s_idx = selected_idx[j]
+                if s_idx in idxs:
+                    idxs.remove(s_idx)
+                    break
+            idx = np.random.choice(idxs, valid_per_class, replace=False)
+            labeled_idx = np.concatenate((labeled_idx, s_idx), axis=None)
+            valid_idx = np.concatenate((valid_idx, idx), axis=None)
+        # the default value is "replace = True" for np.random.choice, but we don't want to sample the same image twice
+        # in labeled data. Thus, I add replace = False.
+        return list(labeled_idx.astype(int)), list(valid_idx.astype(int))
+
     def sampling(self, num_expand_x, trainset): # num_expand_x: 2^16 #expected total number of labeled training samples
         num_per_class = self.params.label_num // self.num_classes
         labels = np.array(trainset.targets)
@@ -121,7 +139,10 @@ class LoadDataset_Label_Unlabel(object):
 
         # Get labeled data and validation data index
         # The type of labeled_idx should be "list"
-        labeled_idx , valid_idx= self.get_labeled_valid(categorized_idx,num_per_class)
+        if self.params.label_num == 10 and self.params.barely:
+            labeled_idx, valid_idx = self.get_labeled_valid_barely(categorized_idx, num_per_class)
+        else:
+            labeled_idx , valid_idx= self.get_labeled_valid(categorized_idx,num_per_class)
 
         # Update the training data index since we will not use validation set
         unlabeled_idx = np.array(np.setdiff1d(np.arange(labels.size), np.array(valid_idx)))

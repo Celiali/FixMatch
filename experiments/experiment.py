@@ -16,7 +16,7 @@ import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 import ignite.distributed as idist
 
-from utils.utils import accuracy,AverageMeter, save_cfmatrix
+from utils.utils import accuracy,AverageMeter, save_cfmatrix, nl_loss
 from utils.ema import EMA
 from datasets.datasets1 import BatchWeightedRandomSampler
 
@@ -129,8 +129,15 @@ class FMExperiment(object):
 
             # compute loss for labelled data,unlabeled data,total loss
             loss_labelled = F.cross_entropy(outputs_labelled, targets_labelled, reduction='mean')
-            loss_unlabelled_guess = (F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none') * mask).mean()
-            loss = loss_labelled + self.params.lambda_unlabeled * loss_unlabelled_guess
+
+            if self.params.use_nlloss:
+                n_class = targets_labelled.max()+1
+                loss_unlabelled_guess = nl_loss(outputs_unlabelled_strong, F.one_hot(pseudo_label, num_classes=n_class), self.params.q)
+            else: 
+                loss_unlabelled_guess = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
+
+            loss_unlabelled = (loss_unlabelled_guess * mask).mean()
+            loss = loss_labelled + self.params.lambda_unlabeled * loss_unlabelled
 
             # compute gradient and backprop
             self.optimizer.zero_grad()

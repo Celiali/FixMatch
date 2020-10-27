@@ -89,3 +89,11 @@ def save_cfmatrix(y_labeled, y_pseudo, mask, y_true_labeled, y_true_unlabeled, s
         f = open(save_to + 'cf_matrix_%s.txt'%name, 'ab')
         np.savetxt(f, matrix, fmt='%.2f', header=comment)
         f.close()
+
+def nl_loss(y_pred, y_pseudo, q): # the output of softmax
+    '''
+    @y_pred: the predictions of unlabeled data with strong augmentations, one hot
+    @y_pseudo: the output logits of unlabeled data with weak augmentations
+    '''
+    y_pred = torch.softmax(y_pred.detach_(), dim=-1)
+    return (1 - torch.pow(torch.sum(y_pseudo * y_pred, axis=-1), q)) / q

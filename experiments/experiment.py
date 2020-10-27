@@ -44,6 +44,12 @@ def get_cosine_schedule_with_warmup(optimizer,
         return max(0., math.cos(math.pi * num_cycles * no_progress))  # this is correct
     return LambdaLR(optimizer, _lr_lambda, last_epoch)
 
+class NegEntropy(object):
+    ### Import from https://github.com/LiJunnan1992/DivideMix/blob/d9d3058fa69a952463b896f84730378cdee6ec39/Train_cifar.py#L205
+    def __call__(self,outputs):
+        probs = torch.softmax(outputs, dim=1)
+        return torch.mean(torch.sum(probs.log()*probs, dim=1))
+
 logger = logging.getLogger(__name__)
 
 class FMExperiment(object):
@@ -72,6 +78,9 @@ class FMExperiment(object):
         if self.ema:
             self.ema_model = EMA(self.model, self.params.ema_decay)
             logger.info("[EMA] initial ")
+
+        if self.params.neg_penalty:
+            self.conf_penalty = NegEntropy()
 
     def forward(self, input):
         return self.model(input)
@@ -131,6 +140,13 @@ class FMExperiment(object):
             loss_labelled = F.cross_entropy(outputs_labelled, targets_labelled, reduction='mean')
             loss_unlabelled_guess = (F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none') * mask).mean()
             loss = loss_labelled + self.params.lambda_unlabeled * loss_unlabelled_guess
+            if self.params.neg_penalty:
+                penalty = self.conf_penalty(outputs_labelled) ## for labelled data
+                if self.params.eta_dynamic:
+                    t = math.cos((math.pi * 7. * self.optimizer._step_count) / (16.*1024 * self.params.epoch_n))
+                else:
+                    t = 1
+                loss = loss + self.params.eta_negpenalty * t * penalty
 
             # compute gradient and backprop
             self.optimizer.zero_grad()

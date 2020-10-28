@@ -10,6 +10,7 @@ DATASET:
   batch_size: 64
   num_workers: 4
   batch_balanced: False
+  barely: False
 
 MODEL:
   name: 'WideResNet_Lk'             #---- 'WideResNet'---'WideResNet_Lk'-------
@@ -45,7 +46,11 @@ EXPERIMENT:
   resume_checkpoints: './checkpoints/exp_4000_1/FMExperiment_epoch_179.pth.tar'
 
   save_cfmatrix: True
-  batch_balanced: True 
+  batch_balanced: True
+
+  neg_penalty: True
+  eta_negpenalty: 0.05
+  eta_dynamic: False
 
   use_nlloss: True
   q: 0.0001  # hyperparameter for noisy label loss

@@ -32,7 +32,7 @@ EXPERIMENT:
   ema_used: True
   ema_decay: 0.999
 
-  threshold: 0.98
+  threshold: 0.95
   lambda_unlabeled: 1
 
   batch_size: 64
@@ -44,10 +44,10 @@ EXPERIMENT:
   resume_checkpoints: './checkpoints/exp_4000_1/FMExperiment_epoch_179.pth.tar'
 
   save_cfmatrix: True
-  batch_balanced: True 
+  batch_balanced: False 
 
   use_nlloss: True
-  q: 0.3  # hyperparameter for noisy label loss
+  q: 0.1  # hyperparameter for noisy label loss
 
 Logging:
   name: "FM"

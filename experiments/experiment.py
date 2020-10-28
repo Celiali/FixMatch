@@ -129,15 +129,17 @@ class FMExperiment(object):
 
             # compute loss for labelled data,unlabeled data,total loss
             loss_labelled = F.cross_entropy(outputs_labelled, targets_labelled, reduction='mean')
-
+            
             if self.params.use_nlloss:
                 n_class = targets_labelled.max()+1
-                loss_unlabelled_guess = nl_loss(outputs_unlabelled_strong, F.one_hot(pseudo_label, num_classes=n_class), self.params.q)
+                loss_unlabelled = nl_loss(outputs_unlabelled_strong, F.one_hot(pseudo_label, num_classes=n_class), self.params.q)
+                loss_unlabelled_ce = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
+                print('step{}: nl_loss: {}, cross_entropy_loss: {}, q: {}'.format(batch_idx, loss_unlabelled.mean(), loss_unlabelled_ce.mean(), self.params.q))
             else: 
-                loss_unlabelled_guess = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
+                loss_unlabelled = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
 
-            loss_unlabelled = (loss_unlabelled_guess * mask).mean()
-            loss = loss_labelled + self.params.lambda_unlabeled * loss_unlabelled
+            loss_unlabelled_guess = (loss_unlabelled * mask).mean()
+            loss = loss_labelled + self.params.lambda_unlabeled * loss_unlabelled_guess
 
             # compute gradient and backprop
             self.optimizer.zero_grad()
@@ -174,7 +176,7 @@ class FMExperiment(object):
             batch_time_meter.update(time.time() - start)
 
             # save confusion matrix every 10 steps
-            if self.params.save_cfmatrix and batch_idx % 100 == 0: #                 
+            if self.params.save_cfmatrix and batch_idx % self.params.save_matrix_every == 0: #                 
                 outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
                 save_cfmatrix(outputs_labelled, pseudo_label, mask, targets_labelled, targets_unlabelled, save_to=save_to, comment='step%d'%batch_idx)
 

@@ -21,7 +21,7 @@ MODEL:
 EXPERIMENT:
   name: 'FMExperiment'              #---- 'VANILLA'--- 'FMExperiment' ---
   out_model: './checkpoints/'
-  log_path: './outputs/exp_250_unbalanced'
+  log_path: './outputs/exp1'
   used_gpu: True
 
   optim_lr: 0.03
@@ -39,6 +39,7 @@ EXPERIMENT:
   n_imgs_per_epoch: 65536
   epoch_n: 1024
   save_every: 15
+  save_matrix_every: 100 # batch
 
   resume: False
   resume_checkpoints: './checkpoints/exp_4000_1/FMExperiment_epoch_179.pth.tar'
@@ -47,7 +48,7 @@ EXPERIMENT:
   batch_balanced: True 
 
   use_nlloss: True
-  q: 0.3  # hyperparameter for noisy label loss
+  q: 0.0001  # hyperparameter for noisy label loss
 
 Logging:
   name: "FM"

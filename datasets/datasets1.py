@@ -97,6 +97,14 @@ class LoadDataset_Label_Unlabel(object):
         # apply transforms
         labeledSet, unlabeledSet, valid_dataset = self.apply_transform(labeled_idx, unlabeled_idx, valid_idx, trainset)
 
+        if self.params.add_noisy_label:
+            class3_idx = labeledSet.indexs[slice(75, 80)] # 75-99
+            class5_idx = labeledSet.indexs[slice(475, 480)]
+            for idx in class3_idx:
+                labeledSet.dataset.targets[idx] = 5
+            for idx in class5_idx:
+                labeledSet.dataset.targets[idx] = 3
+
         return labeledSet, unlabeledSet, valid_dataset, testset
 
         # self.get_dataloader(train_sup_dataset, train_unsup_dataset, testset)

@@ -11,6 +11,7 @@ DATASET:
   num_workers: 4
   batch_balanced: False
   barely: False
+  add_noisy_label: True
 
 MODEL:
   name: 'WideResNet_Lk'             #---- 'WideResNet'---'WideResNet_Lk'-------
@@ -33,7 +34,7 @@ EXPERIMENT:
   ema_used: True
   ema_decay: 0.999
 
-  threshold: 0.98
+  threshold: 0.95
   lambda_unlabeled: 1
 
   batch_size: 64

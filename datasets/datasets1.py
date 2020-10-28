@@ -101,12 +101,23 @@ class LoadDataset_Label_Unlabel(object):
         
         if self.params.add_noisy_label:
             labeledSet.dataset = copy.deepcopy(labeledSet.dataset) # to keep unlabledSet unchange
-            class3_idx = labeledSet.indexs[slice(75, 80)] # 75-99
-            class5_idx = labeledSet.indexs[slice(475, 480)]
-            for idx in class3_idx:
-                labeledSet.dataset.targets[idx] = 5
-            for idx in class5_idx:
-                labeledSet.dataset.targets[idx] = 3
+            unique_idx_labeled = set(labeledSet.indexs)
+            unique_idx_valid = set(valid_dataset.indexs) 
+
+            valid_idx_cls0 = [ i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 0]
+            valid_idx_cls1 = [ i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 1]
+
+            sampled_idx_cls2 = [ i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 2]
+            sampled_idx_cls3 = [ i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 3]
+
+            # replacing 3 images
+            labeledSet.dataset.data[sampled_idx_cls2[:3]] = valid_dataset.dataset.data[valid_idx_cls0[:3]] 
+            labeledSet.dataset.data[sampled_idx_cls3[:3]] = valid_dataset.dataset.data[valid_idx_cls1[:3]] 
+
+            # removing the three indexs
+            for i in range(3):
+                valid_dataset.indexs.remove(valid_idx_cls0[i])
+                valid_dataset.indexs.remove(valid_idx_cls1[i])
 
         return labeledSet, unlabeledSet, valid_dataset, testset
 

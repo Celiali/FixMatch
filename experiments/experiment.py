@@ -47,8 +47,10 @@ def get_cosine_schedule_with_warmup(optimizer,
 class NegEntropy(object):
     ### Import from https://github.com/LiJunnan1992/DivideMix/blob/d9d3058fa69a952463b896f84730378cdee6ec39/Train_cifar.py#L205
     def __call__(self,outputs):
-        probs = torch.softmax(outputs, dim=1)
-        return torch.mean(torch.sum(probs.log()*probs, dim=1))
+        # probs = torch.softmax(outputs, dim=1)
+        # return torch.mean(torch.sum(probs.log()*probs, dim=1))
+        probs = torch.mean(torch.softmax(outputs, dim=1), dim=0) # 64*10 -> 1*10
+        return torch.sum(probs.log()*probs)
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ DATASET:
   loading_data: 'LOAD_LABEL_UNLABEL' # ----LOAD_ORIGINAL'--- 'LOAD_LABEL_UNLABEL' ---
   dataset: 'CIFAR10'
   strongaugment: 'RA'
-  label_num: 250
+  label_num: 150
   num_expand_x: 65536 # total number of labeled samples
   mu: 7
   batch_size: 64
@@ -53,7 +53,7 @@ EXPERIMENT:
   eta_negpenalty: 0.05
   eta_dynamic: False
 
-  use_nlloss: False
+  use_nlloss: True
   q: 0.0001  # hyperparameter for noisy label loss
 
 Logging:

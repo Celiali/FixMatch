@@ -53,7 +53,7 @@ EXPERIMENT:
   eta_negpenalty: 0.05
   eta_dynamic: False
 
-  use_nlloss: True
+  use_nlloss: False
   q: 0.0001  # hyperparameter for noisy label loss
 
 Logging:

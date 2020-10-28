@@ -9,6 +9,7 @@ sys.path.append(os.getcwd())
 import numpy as np
 import ignite.distributed as idist
 import hydra
+import copy
 
 from torch.utils.data import Dataset, SequentialSampler
 from torch._six import int_classes as _int_classes
@@ -97,7 +98,9 @@ class LoadDataset_Label_Unlabel(object):
         # apply transforms
         labeledSet, unlabeledSet, valid_dataset = self.apply_transform(labeled_idx, unlabeled_idx, valid_idx, trainset)
 
+        
         if self.params.add_noisy_label:
+            labeledSet.dataset = copy.deepcopy(labeledSet.dataset) # to keep unlabledSet unchange
             class3_idx = labeledSet.indexs[slice(75, 80)] # 75-99
             class5_idx = labeledSet.indexs[slice(475, 480)]
             for idx in class3_idx:

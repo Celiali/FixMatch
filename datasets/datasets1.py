@@ -9,6 +9,7 @@ sys.path.append(os.getcwd())
 import numpy as np
 import ignite.distributed as idist
 import hydra
+import copy
 
 from torch.utils.data import Dataset, SequentialSampler
 from torch._six import int_classes as _int_classes
@@ -77,8 +78,8 @@ class LoadDataset_Label_Unlabel(object):
         # self.get_dataset()
 
     def get_dataset(self):
-        data_dir = os.path.join(os.getcwd(), self.datapath)#, 'cifar-%s-batches-py' % self.name[5:])
-        # os.getcwd()hydra.utils.get_original_cwd()
+        rootdir =  hydra.utils.get_original_cwd() if __name__ == '__main__' else os.getcwd()
+        data_dir = os.path.join(rootdir, self.datapath, 'cifar-%s-batches-py' % self.name[5:])
         downloadFlag = not os.path.exists(data_dir)
 
         try:
@@ -96,6 +97,27 @@ class LoadDataset_Label_Unlabel(object):
 
         # apply transforms
         labeledSet, unlabeledSet, valid_dataset = self.apply_transform(labeled_idx, unlabeled_idx, valid_idx, trainset)
+
+        
+        if self.params.add_noisy_label:
+            labeledSet.dataset = copy.deepcopy(labeledSet.dataset) # to keep unlabledSet unchange
+            unique_idx_labeled = set(labeledSet.indexs)
+            unique_idx_valid = set(valid_dataset.indexs) 
+
+            valid_idx_cls0 = [ i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 0]
+            valid_idx_cls1 = [ i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 1]
+
+            sampled_idx_cls2 = [ i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 2]
+            sampled_idx_cls3 = [ i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 3]
+
+            # replacing 3 images
+            labeledSet.dataset.data[sampled_idx_cls2[:3]] = valid_dataset.dataset.data[valid_idx_cls0[:3]] 
+            labeledSet.dataset.data[sampled_idx_cls3[:3]] = valid_dataset.dataset.data[valid_idx_cls1[:3]] 
+
+            # removing the three indexs
+            for i in range(3):
+                valid_dataset.indexs.remove(valid_idx_cls0[i])
+                valid_dataset.indexs.remove(valid_idx_cls1[i])
 
         return labeledSet, unlabeledSet, valid_dataset, testset
 

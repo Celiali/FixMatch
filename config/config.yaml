@@ -4,14 +4,14 @@ DATASET:
   loading_data: 'LOAD_LABEL_UNLABEL' # ----LOAD_ORIGINAL'--- 'LOAD_LABEL_UNLABEL' ---
   dataset: 'CIFAR10'
   strongaugment: 'RA'
-  label_num: 150
+  label_num: 100
   num_expand_x: 65536 # total number of labeled samples
   mu: 7
   batch_size: 64
   num_workers: 4
   batch_balanced: False
   barely: False
-  add_noisy_label: True
+  add_noisy_label: False
 
 MODEL:
   name: 'WideResNet_Lk'             #---- 'WideResNet'---'WideResNet_Lk'-------
@@ -40,20 +40,20 @@ EXPERIMENT:
   batch_size: 64
   n_imgs_per_epoch: 65536
   epoch_n: 1024
-  save_every: 15
+  save_every: 30
   save_matrix_every: 100 # batch
 
   resume: False
   resume_checkpoints: './checkpoints/exp_4000_1/FMExperiment_epoch_179.pth.tar'
 
   save_cfmatrix: True
-  batch_balanced: True
+  batch_balanced: False
 
-  neg_penalty: True
+  neg_penalty: False
   eta_negpenalty: 0.05
   eta_dynamic: False
 
-  use_nlloss: True
+  use_nlloss: False
   q: 0.0001  # hyperparameter for noisy label loss
 
 Logging:

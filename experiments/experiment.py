@@ -74,6 +74,7 @@ class FMExperiment(object):
         # used Gpu or not
         self.used_gpu = self.params.used_gpu
         self.device = torch.device('cuda' if torch.cuda.is_available() and self.used_gpu else 'cpu')
+        print('===>>>:', self.device)
 
         # used EWA or not
         self.ema = self.params.ema_used
@@ -144,8 +145,7 @@ class FMExperiment(object):
             if self.params.use_nlloss:
                 n_class = targets_labelled.max()+1
                 loss_unlabelled = nl_loss(outputs_unlabelled_strong, F.one_hot(pseudo_label, num_classes=n_class), self.params.q)
-                loss_unlabelled_ce = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
-                print('step{}: nl_loss: {}, cross_entropy_loss: {}, q: {}'.format(batch_idx, loss_unlabelled.mean(), loss_unlabelled_ce.mean(), self.params.q))
+                # loss_unlabelled_ce = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
             else: 
                 loss_unlabelled = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
 

@@ -40,7 +40,7 @@ EXPERIMENT:
   batch_size: 64
   n_imgs_per_epoch: 65536
   epoch_n: 1024
-  save_every: 30
+  save_every: 16
   save_matrix_every: 100 # batch
 
   resume: False

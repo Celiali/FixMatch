@@ -58,6 +58,7 @@ class FMExperiment(object):
     def __init__(self, wideresnet, params):
         self.model = wideresnet
         self.params = params
+        self.save_cfmatrix = params.save_cfmatrix
         self.curr_device = None
         # optimizer
         self.optimizer = optim.SGD(self.model.parameters(), lr=self.params.optim_lr,
@@ -135,7 +136,7 @@ class FMExperiment(object):
             del outputs
 
             # compute pseudo label for unlabeled data with weak augmentations
-            outputs_labelled_weak_pro = torch.softmax(outputs_unlabelled_weak.detach_(), dim=-1)
+            outputs_labelled_weak_pro = torch.softmax(outputs_unlabelled_weak.detach(), dim=-1)
             scores, pseudo_label = torch.max(outputs_labelled_weak_pro, dim=-1)
             mask = scores.ge(self.params.threshold).float()
 
@@ -193,8 +194,8 @@ class FMExperiment(object):
             unlabelled_weak_top5_acc_meter.update(weak_top5_acc.item())
             batch_time_meter.update(time.time() - start)
 
-            # save confusion matrix every 10 steps
-            if self.params.save_cfmatrix and batch_idx % self.params.save_matrix_every == 0: #                 
+            # save confusion matrix every 100 steps
+            if self.save_cfmatrix and batch_idx % self.params.save_matrix_every == 0: #                 
                 outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
                 save_cfmatrix(outputs_labelled, pseudo_label, mask, targets_labelled, targets_unlabelled, save_to=save_to, comment='step%d'%batch_idx)
 
@@ -289,10 +290,9 @@ class FMExperiment(object):
 
         prev_lr = np.inf
         for epoch_idx in range(start_epoch, self.params.epoch_n):
-            if epoch_idx == 0 or (epoch_idx + 1) % self.params.save_every == 0:
-                self.params.save_cfmatrix = True
-            else:
-                self.params.save_cfmatrix = False
+            if self.params.save_cfmatrix and (epoch_idx % self.params.save_matrix_every == 0 or epoch_idx == self.params.epoch_n-1):
+                self.save_cfmatrix = True
+            else: self.save_cfmatrix = False
 
             # turn on training
             start = time.time()

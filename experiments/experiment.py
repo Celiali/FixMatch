@@ -379,7 +379,7 @@ class FMExperiment(object):
                 shuffle=True,
                 drop_last=True
             )
-        self.labelled_loader = DataLoader(labelled_training_dataset, num_workers=16, pin_memory=True, **kwargs)
+        self.labelled_loader = DataLoader(labelled_training_dataset, num_workers=self.params.num_workers, pin_memory=True, **kwargs)
         logger.info("Loading Labelled Loader")
         return
 
@@ -395,7 +395,7 @@ class FMExperiment(object):
                 shuffle=True,
                 drop_last=True,
             )
-        self.unlabelled_loader = DataLoader(unlabelled_training_dataset, num_workers=16, pin_memory=True, **kwargs)
+        self.unlabelled_loader = DataLoader(unlabelled_training_dataset, num_workers=self.params.num_workers, pin_memory=True, **kwargs)
         logger.info("Loading Unlabelled Loader")
         return
 
@@ -405,7 +405,7 @@ class FMExperiment(object):
                                           batch_size=self.params.batch_size,
                                           shuffle=False,
                                           drop_last=False,
-                                          num_workers=16,
+                                          num_workers=self.params.num_workers,
                                           pin_memory=True)
         logger.info("Loading Validation Loader")
         return
@@ -416,7 +416,7 @@ class FMExperiment(object):
                                           batch_size=self.params.batch_size,
                                           shuffle=False,
                                           drop_last=False, 
-                                          num_workers=16, 
+                                          num_workers=self.params.num_workers, 
                                           pin_memory=True)
         logger.info("Loading Testing Loader")
         return

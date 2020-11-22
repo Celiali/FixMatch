@@ -8,7 +8,7 @@ DATASET:
   num_expand_x: 65536 # total number of labeled samples
   mu: 7
   batch_size: 64
-  num_workers: 4
+  num_workers: 16
   batch_balanced: False
   barely: False
   add_noisy_label: False

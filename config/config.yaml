@@ -59,3 +59,7 @@ EXPERIMENT:
 Logging:
   name: "FM"
   seed: 1265                    #---- None ---
+
+hydra:
+  run:
+    dir: ./

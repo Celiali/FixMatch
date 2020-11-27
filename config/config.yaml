@@ -23,13 +23,14 @@ MODEL:
 EXPERIMENT:
   name: 'FMExperiment'              #---- 'VANILLA'--- 'FMExperiment' ---
   out_model: './checkpoints/'
-  log_path: './outputs/exp1'
+  log_path: './outputs/'
   used_gpu: True
 
   optim_lr: 0.03
   optim_momentum: 0.9
   used_nesterov: True
   warmup: 0
+  wdecay: 0.0005
 
   ema_used: True
   ema_decay: 0.999

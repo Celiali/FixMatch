@@ -61,8 +61,15 @@ class FMExperiment(object):
         self.save_cfmatrix = params.save_cfmatrix
         self.curr_device = None
         # optimizer
-        self.optimizer = optim.SGD(self.model.parameters(), lr=self.params.optim_lr,
-                          momentum=self.params.optim_momentum, nesterov=self.params.used_nesterov)
+        no_decay = ['bias', 'bn']
+        grouped_parameters = [
+            {'params': [p for n, p in self.model.named_parameters() if not any(
+                nd in n for nd in no_decay)], 'weight_decay': self.params.wdecay},
+            {'params': [p for n, p in self.model.named_parameters() if any(
+                nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
+        self.optimizer = optim.SGD(grouped_parameters, lr=self.params.optim_lr,
+                                   momentum=self.params.optim_momentum, nesterov=self.params.used_nesterov)
 
         per_epoch_steps = self.params.n_imgs_per_epoch // self.params.batch_size
         total_training_steps = self.params.epoch_n * per_epoch_steps

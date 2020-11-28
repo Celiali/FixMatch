@@ -4,14 +4,14 @@ DATASET:
   loading_data: 'LOAD_LABEL_UNLABEL' # ----LOAD_ORIGINAL'--- 'LOAD_LABEL_UNLABEL' ---
   dataset: 'CIFAR10'
   strongaugment: 'RA'
-  label_num: 150
+  label_num: 40
   num_expand_x: 65536 # total number of labeled samples
   mu: 7
   batch_size: 64
   num_workers: 4
   batch_balanced: False
   barely: False
-  add_noisy_label: True
+  add_noisy_label: False
 
 MODEL:
   name: 'WideResNet_Lk'             #---- 'WideResNet'---'WideResNet_Lk'-------
@@ -23,13 +23,14 @@ MODEL:
 EXPERIMENT:
   name: 'FMExperiment'              #---- 'VANILLA'--- 'FMExperiment' ---
   out_model: './checkpoints/'
-  log_path: './outputs/exp1'
+  log_path: './outputs/'
   used_gpu: True
 
   optim_lr: 0.03
   optim_momentum: 0.9
   used_nesterov: True
   warmup: 0
+  wdecay: 0.0005
 
   ema_used: True
   ema_decay: 0.999
@@ -38,24 +39,29 @@ EXPERIMENT:
   lambda_unlabeled: 1
 
   batch_size: 64
+  num_workers: 4
   n_imgs_per_epoch: 65536
   epoch_n: 1024
-  save_every: 15
+  save_every: 64
   save_matrix_every: 100 # batch
 
   resume: False
   resume_checkpoints: './checkpoints/exp_4000_1/FMExperiment_epoch_179.pth.tar'
 
   save_cfmatrix: True
-  batch_balanced: True
+  batch_balanced: False
 
-  neg_penalty: True
+  neg_penalty: False
   eta_negpenalty: 0.05
   eta_dynamic: False
 
-  use_nlloss: True
+  use_nlloss: False
   q: 0.0001  # hyperparameter for noisy label loss
 
 Logging:
   name: "FM"
   seed: 1265                    #---- None ---
+
+hydra:
+  run:
+    dir: ./

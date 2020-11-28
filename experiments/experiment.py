@@ -58,10 +58,19 @@ class FMExperiment(object):
     def __init__(self, wideresnet, params):
         self.model = wideresnet
         self.params = params
+        self.save_cfmatrix = params.save_cfmatrix
         self.curr_device = None
         # optimizer
-        self.optimizer = optim.SGD(self.model.parameters(), lr=self.params.optim_lr,
-                          momentum=self.params.optim_momentum, nesterov=self.params.used_nesterov)
+        # refer to https://github.com/kekmodel/FixMatch-pytorch/blob/248268b8e6777de4f5c8768ee7fc53c4f4c8a13c/train.py#L237
+        no_decay = ['bias', 'bn']
+        grouped_parameters = [
+            {'params': [p for n, p in self.model.named_parameters() if not any(
+                nd in n for nd in no_decay)], 'weight_decay': self.params.wdecay},
+            {'params': [p for n, p in self.model.named_parameters() if any(
+                nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
+        self.optimizer = optim.SGD(grouped_parameters, lr=self.params.optim_lr,
+                                   momentum=self.params.optim_momentum, nesterov=self.params.used_nesterov)
 
         per_epoch_steps = self.params.n_imgs_per_epoch // self.params.batch_size
         total_training_steps = self.params.epoch_n * per_epoch_steps
@@ -74,6 +83,7 @@ class FMExperiment(object):
         # used Gpu or not
         self.used_gpu = self.params.used_gpu
         self.device = torch.device('cuda' if torch.cuda.is_available() and self.used_gpu else 'cpu')
+        print('===>>>:', self.device)
 
         # used EWA or not
         self.ema = self.params.ema_used
@@ -134,7 +144,7 @@ class FMExperiment(object):
             del outputs
 
             # compute pseudo label for unlabeled data with weak augmentations
-            outputs_labelled_weak_pro = torch.softmax(outputs_unlabelled_weak.detach_(), dim=-1)
+            outputs_labelled_weak_pro = torch.softmax(outputs_unlabelled_weak.detach(), dim=-1)
             scores, pseudo_label = torch.max(outputs_labelled_weak_pro, dim=-1)
             mask = scores.ge(self.params.threshold).float()
 
@@ -144,8 +154,7 @@ class FMExperiment(object):
             if self.params.use_nlloss:
                 n_class = targets_labelled.max()+1
                 loss_unlabelled = nl_loss(outputs_unlabelled_strong, F.one_hot(pseudo_label, num_classes=n_class), self.params.q)
-                loss_unlabelled_ce = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
-                print('step{}: nl_loss: {}, cross_entropy_loss: {}, q: {}'.format(batch_idx, loss_unlabelled.mean(), loss_unlabelled_ce.mean(), self.params.q))
+                # loss_unlabelled_ce = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
             else: 
                 loss_unlabelled = F.cross_entropy(outputs_unlabelled_strong, pseudo_label,reduction='none')  
 
@@ -193,8 +202,8 @@ class FMExperiment(object):
             unlabelled_weak_top5_acc_meter.update(weak_top5_acc.item())
             batch_time_meter.update(time.time() - start)
 
-            # save confusion matrix every 10 steps
-            if self.params.save_cfmatrix and batch_idx % self.params.save_matrix_every == 0: #                 
+            # save confusion matrix every 100 steps
+            if self.save_cfmatrix and batch_idx % self.params.save_matrix_every == 0: #                 
                 outputs_labelled = torch.argmax(outputs_labelled, dim=-1)
                 save_cfmatrix(outputs_labelled, pseudo_label, mask, targets_labelled, targets_unlabelled, save_to=save_to, comment='step%d'%batch_idx)
 
@@ -289,10 +298,9 @@ class FMExperiment(object):
 
         prev_lr = np.inf
         for epoch_idx in range(start_epoch, self.params.epoch_n):
-            if epoch_idx == 0 or (epoch_idx + 1) % self.params.save_every == 0:
-                self.params.save_cfmatrix = True
-            else:
-                self.params.save_cfmatrix = False
+            if self.params.save_cfmatrix and (epoch_idx % self.params.save_matrix_every == 0 or epoch_idx == self.params.epoch_n-1):
+                self.save_cfmatrix = True
+            else: self.save_cfmatrix = False
 
             # turn on training
             start = time.time()
@@ -379,7 +387,7 @@ class FMExperiment(object):
                 shuffle=True,
                 drop_last=True
             )
-        self.labelled_loader = DataLoader(labelled_training_dataset, **kwargs)
+        self.labelled_loader = DataLoader(labelled_training_dataset, num_workers=self.params.num_workers, pin_memory=True, **kwargs)
         logger.info("Loading Labelled Loader")
         return
 
@@ -395,7 +403,7 @@ class FMExperiment(object):
                 shuffle=True,
                 drop_last=True,
             )
-        self.unlabelled_loader = DataLoader(unlabelled_training_dataset, **kwargs)
+        self.unlabelled_loader = DataLoader(unlabelled_training_dataset, num_workers=self.params.num_workers, pin_memory=True, **kwargs)
         logger.info("Loading Unlabelled Loader")
         return
 
@@ -404,7 +412,9 @@ class FMExperiment(object):
         self.valid_dataloader = DataLoader(valid_dataset,
                                           batch_size=self.params.batch_size,
                                           shuffle=False,
-                                          drop_last=False)
+                                          drop_last=False,
+                                          num_workers=self.params.num_workers,
+                                          pin_memory=True)
         logger.info("Loading Validation Loader")
         return
 
@@ -413,7 +423,9 @@ class FMExperiment(object):
         self.test_dataloader = DataLoader(test_dataset,
                                           batch_size=self.params.batch_size,
                                           shuffle=False,
-                                          drop_last=False)
+                                          drop_last=False, 
+                                          num_workers=self.params.num_workers, 
+                                          pin_memory=True)
         logger.info("Loading Testing Loader")
         return
 

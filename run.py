@@ -1,9 +1,9 @@
-import yaml
-import argparse
+# import yaml
+# import argparse
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-from easydict import EasyDict as edict
+# from easydict import EasyDict as edict
 import random
 
 from datasets import *
@@ -11,27 +11,26 @@ from models import *
 from experiments import *
 from utils.utils import setup_default_logging
 
-if __name__ == '__main__':
-    #### Error: Initializing libiomp5.dylib, but found libiomp5.dylib already initialized.###
-    # import os
-    # os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+from omegaconf import DictConfig, OmegaConf
 
-    # configuration
-    parser = argparse.ArgumentParser(description='Generic runner for FixMatch')
-    parser.add_argument('--config',  '-c',
-                        dest="filename",
-                        metavar='FILE',
-                        help =  'path to the config file',
-                        default='config/config.yaml')
+@hydra.main(config_path='./config', config_name='config')
+def main(CONFIG: DictConfig) -> None:
+# # configuration
+# parser = argparse.ArgumentParser(description='Generic runner for FixMatch')
+# parser.add_argument('--config',  '-c',
+#                     dest="filename",
+#                     metavar='FILE',
+#                     help =  'path to the config file',
+#                     default='config/config.yaml')
 
-    args = parser.parse_args()
-    with open(args.filename, 'r') as file:
-        try:
-            config_file = yaml.safe_load(file)
-        except yaml.YAMLError as exc:
-            print(exc)
-    CONFIG = edict(config_file)
-    print('==> CONFIG is: \n', CONFIG, '\n')
+# args = parser.parse_args()
+# with open(args.filename, 'r') as file:
+#     try:
+#         config_file = yaml.safe_load(file)
+#     except yaml.YAMLError as exc:
+#         print(exc)
+# CONFIG = edict(config_file)
+    print('==> CONFIG is: \n', OmegaConf.to_yaml(CONFIG), '\n')
 
     # initial logging file
     logger = setup_default_logging(CONFIG, string = 'Train')
@@ -71,3 +70,9 @@ if __name__ == '__main__':
     experiment.testing()
     print("======= Testing done =======")
     logger.info("======= Testing done =======")
+
+if __name__ == '__main__':
+    #### Error: Initializing libiomp5.dylib, but found libiomp5.dylib already initialized.###
+    # import os
+    # os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+    main()

@@ -4,11 +4,11 @@ DATASET:
   loading_data: 'LOAD_LABEL_UNLABEL' # ----LOAD_ORIGINAL'--- 'LOAD_LABEL_UNLABEL' ---
   dataset: 'CIFAR10'
   strongaugment: 'RA'
-  label_num: 100
+  label_num: 40
   num_expand_x: 65536 # total number of labeled samples
   mu: 7
   batch_size: 64
-  num_workers: 16
+  num_workers: 4
   batch_balanced: False
   barely: False
   add_noisy_label: False
@@ -39,7 +39,7 @@ EXPERIMENT:
   lambda_unlabeled: 1
 
   batch_size: 64
-  num_workers: 16
+  num_workers: 4
   n_imgs_per_epoch: 65536
   epoch_n: 1024
   save_every: 64

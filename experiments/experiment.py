@@ -61,6 +61,7 @@ class FMExperiment(object):
         self.save_cfmatrix = params.save_cfmatrix
         self.curr_device = None
         # optimizer
+        # refer to https://github.com/kekmodel/FixMatch-pytorch/blob/248268b8e6777de4f5c8768ee7fc53c4f4c8a13c/train.py#L237
         no_decay = ['bias', 'bn']
         grouped_parameters = [
             {'params': [p for n, p in self.model.named_parameters() if not any(

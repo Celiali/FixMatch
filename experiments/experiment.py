@@ -55,9 +55,10 @@ class NegEntropy(object):
 logger = logging.getLogger(__name__)
 
 class FMExperiment(object):
-    def __init__(self, wideresnet, params):
+    def __init__(self, wideresnet, params, cta=None):
         self.model = wideresnet
         self.params = params
+        self.cta = cta
         self.save_cfmatrix = params.save_cfmatrix
         self.curr_device = None
         # optimizer
@@ -96,6 +97,19 @@ class FMExperiment(object):
 
     def forward(self, input):
         return self.model(input)
+
+    def update_cta(self, data_labelled, targets_labelled):
+        self.model.eval()
+        with torch.no_grad:
+            logits = self.forward(data_labelled)
+            probs = torch.softmax(logits, dim=1)
+            policies = self.cta.get_policy(probe=True)
+            for prob, t, policy in zip(probs, targets_labelled, policies):
+                prob[t] -= 1
+                prob = torch.abs(prob).sum()
+                self.cta.update_rates(policy, 1.0 - 0.5 * prob.item())
+
+
 
     def train_step(self):
         logger.info("***** Running training *****")
@@ -173,6 +187,10 @@ class FMExperiment(object):
             loss.backward()
             self.optimizer.step()
             self.scheduler.step()
+
+            # update cta bin weights
+            if self.cta:
+                self.update_cta(data_labelled, targets_labelled)
 
             # updating ema model (params)
             if self.ema:

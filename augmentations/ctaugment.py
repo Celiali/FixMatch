@@ -44,7 +44,7 @@ class CTAugment:
         for k, op in OPS.items():
             self.rates[k] = tuple([np.ones(x, "f") for x in op.bins])
 
-    def rate_to_p(self, rate):
+    def rate_to_p(self, rate): # bin weights to probability
         p = rate + (1 - self.decay)  # Avoid to have all zero.
         p = p / p.max()
         p[p < self.th] = 0
@@ -98,8 +98,8 @@ class CTAugment:
             pil_img = OPS[op].f(pil_img, *args)
         return pil_img
 
-    def __call__(self, img):
-        policy = self.get_policy(probe=False)
+    def __call__(self, img, probe=True):
+        policy = self.get_policy(probe)
         return self.apply(img, policy)
 
 

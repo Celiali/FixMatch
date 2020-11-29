@@ -50,6 +50,9 @@ def main(CONFIG: DictConfig) -> None:
     data = LOADDATA[CONFIG.DATASET.loading_data](CONFIG.DATASET)
     labeled_training_dataset,unlabeled_training_dataset, valid_dataset, test_dataset = data.get_dataset()
 
+    
+    cta = data.get_cta() if CONFIG.DATASET.strongaugment == 'CTA' else None
+
     # build wideresnet
     model = WRN_MODELS[CONFIG.MODEL.name](CONFIG.MODEL)
     logger.info("[Model] Building model {}".format(CONFIG.MODEL.name))
@@ -58,7 +61,7 @@ def main(CONFIG: DictConfig) -> None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         model = model.to(device=device)
 
-    experiment = EXPERIMENT[CONFIG.EXPERIMENT.name](model,CONFIG.EXPERIMENT)
+    experiment = EXPERIMENT[CONFIG.EXPERIMENT.name](model,CONFIG.EXPERIMENT, cta)
     experiment.labelled_loader(labeled_training_dataset)
     if CONFIG.DATASET.loading_data != 'LOAD_ORIGINAL' and unlabeled_training_dataset != None:
         experiment.unlabelled_loader(unlabeled_training_dataset, CONFIG.DATASET.mu)

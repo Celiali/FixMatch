@@ -35,7 +35,7 @@ TRANSFORM_CIFAR = {
 
 STRONG_AUG = {
     'RA': RandAugment(n=2, m=10),
-    # 'CTA': CTAugment()
+    'CTA': CTAugment()
 }
 
 
@@ -76,6 +76,9 @@ class LoadDataset_Label_Unlabel(object):
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
                         std=TRANSFORM_CIFAR[self.name]['std'],)])
         # self.get_dataset()
+
+    def get_cta(self):
+        return self.strongaugment
 
     def get_dataset(self):
         rootdir =  hydra.utils.get_original_cwd()

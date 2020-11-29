@@ -102,6 +102,7 @@ class FMExperiment(object):
         (cta_imgs, policies), cat_targets = data # labeled
         self.model.eval() # TODO: model or ema_model?
         with torch.no_grad():
+            cta_imgs = cta_imgs.to(self.device)
             logits = self.forward(cta_imgs)
             probs = torch.softmax(logits, dim=1)
             policies = [deserialize(p) for p in policies]

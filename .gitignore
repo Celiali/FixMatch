@@ -138,3 +138,5 @@ dmypy.json
 
 .vscode/
 .DS_Store
+
+.hydra/

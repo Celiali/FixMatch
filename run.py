@@ -48,7 +48,6 @@ def main(CONFIG: DictConfig) -> None:
 
     # get datasets
     data = LOADDATA[CONFIG.DATASET.loading_data](CONFIG.DATASET)
-    labeled_training_dataset,unlabeled_training_dataset, valid_dataset, test_dataset = data.get_dataset()
 
     
     cta = data.get_cta() if CONFIG.DATASET.strongaugment == 'CTA' else None
@@ -62,6 +61,13 @@ def main(CONFIG: DictConfig) -> None:
         model = model.to(device=device)
 
     experiment = EXPERIMENT[CONFIG.EXPERIMENT.name](model,CONFIG.EXPERIMENT, cta)
+
+    if cta:
+        labeled_training_dataset,unlabeled_training_dataset, valid_dataset, test_dataset, cta_dataset = data.get_dataset()
+        experiment.cta_probe_loader(cta_dataset)
+    else:    
+        labeled_training_dataset,unlabeled_training_dataset, valid_dataset, test_dataset = data.get_dataset()
+
     experiment.labelled_loader(labeled_training_dataset)
     if CONFIG.DATASET.loading_data != 'LOAD_ORIGINAL' and unlabeled_training_dataset != None:
         experiment.unlabelled_loader(unlabeled_training_dataset, CONFIG.DATASET.mu)

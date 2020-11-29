@@ -3,7 +3,7 @@ DATASET:
   data_dir: 'data'
   loading_data: 'LOAD_LABEL_UNLABEL' # ----LOAD_ORIGINAL'--- 'LOAD_LABEL_UNLABEL' ---
   dataset: 'CIFAR10'
-  strongaugment: 'RA'
+  strongaugment: 'CTA'
   label_num: 40
   num_expand_x: 65536 # total number of labeled samples
   mu: 7

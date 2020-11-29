@@ -17,6 +17,7 @@
 from collections import OrderedDict
 import random
 from collections import namedtuple
+import json
 
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance, ImageFilter
@@ -25,6 +26,9 @@ from PIL import Image, ImageOps, ImageEnhance, ImageFilter
 OPS = {}
 OP = namedtuple("OP", ("f", "bins"))
 Sample = namedtuple("Sample", ("train", "probe"))
+
+def deserialize(policy_str):
+    return [OP(f=x[0], bins=x[1]) for x in json.loads(policy_str)]
 
 
 def register(*bins):

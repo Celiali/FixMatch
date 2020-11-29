@@ -19,6 +19,7 @@ import ignite.distributed as idist
 from utils.utils import accuracy,AverageMeter, save_cfmatrix, nl_loss
 from utils.ema import EMA
 from datasets.datasets1 import BatchWeightedRandomSampler
+from augmentations.ctaugment import deserialize
 
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
@@ -55,9 +56,10 @@ class NegEntropy(object):
 logger = logging.getLogger(__name__)
 
 class FMExperiment(object):
-    def __init__(self, wideresnet, params):
+    def __init__(self, wideresnet, params, cta=None):
         self.model = wideresnet
         self.params = params
+        self.cta = cta
         self.save_cfmatrix = params.save_cfmatrix
         self.curr_device = None
         # optimizer
@@ -83,7 +85,6 @@ class FMExperiment(object):
         # used Gpu or not
         self.used_gpu = self.params.used_gpu
         self.device = torch.device('cuda' if torch.cuda.is_available() and self.used_gpu else 'cpu')
-        print('===>>>:', self.device)
 
         # used EWA or not
         self.ema = self.params.ema_used
@@ -96,6 +97,22 @@ class FMExperiment(object):
 
     def forward(self, input):
         return self.model(input)
+
+    def update_cta(self, data): 
+        (cta_imgs, policies), cat_targets = data # labeled
+        self.model.eval() # TODO: model or ema_model?
+        with torch.no_grad():
+            cta_imgs = cta_imgs.to(self.device)
+            logits = self.forward(cta_imgs)
+            probs = torch.softmax(logits, dim=1)
+            policies = [deserialize(p) for p in policies]
+            for prob, t, policy in zip(probs, cat_targets, policies):
+                prob[t] -= 1
+                prob = torch.abs(prob).sum()
+                self.cta.update_rates(policy, 1.0 - 0.5 * prob.item())
+        self.model.train()
+
+
 
     def train_step(self):
         logger.info("***** Running training *****")
@@ -120,6 +137,8 @@ class FMExperiment(object):
 
         # turn on model training
         train_loader = zip(self.labelled_loader, self.unlabelled_loader)
+        if self.cta:
+            cta_iter = iter(self.cta_probe_dataloader)
         self.model.train()
         for batch_idx, (data_labelled, data_unlabelled) in enumerate(train_loader):
             inputs_labelled, targets_labelled = data_labelled
@@ -173,6 +192,10 @@ class FMExperiment(object):
             loss.backward()
             self.optimizer.step()
             self.scheduler.step()
+
+            # update cta bin weights
+            if self.cta:
+                self.update_cta(next(cta_iter))
 
             # updating ema model (params)
             if self.ema:
@@ -428,6 +451,16 @@ class FMExperiment(object):
                                           pin_memory=True)
         logger.info("Loading Testing Loader")
         return
+
+    def cta_probe_loader(self, cta_probe_dataset):
+        self.cta_probe_dataloader = DataLoader(cta_probe_dataset,
+                                          batch_size=self.params.batch_size,
+                                          shuffle=False,
+                                          drop_last=False, 
+                                          num_workers=self.params.num_workers, 
+                                          pin_memory=True)
+        logger.info("Loading cta probe Loader")
+        return 
 
     def load_model(self, mdl_fname, cuda=False):
         if self.used_gpu:

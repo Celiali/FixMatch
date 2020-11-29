@@ -17,6 +17,7 @@
 from collections import OrderedDict
 import random
 from collections import namedtuple
+import json
 
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance, ImageFilter
@@ -25,6 +26,9 @@ from PIL import Image, ImageOps, ImageEnhance, ImageFilter
 OPS = {}
 OP = namedtuple("OP", ("f", "bins"))
 Sample = namedtuple("Sample", ("train", "probe"))
+
+def deserialize(policy_str):
+    return [OP(f=x[0], bins=x[1]) for x in json.loads(policy_str)]
 
 
 def register(*bins):
@@ -44,7 +48,7 @@ class CTAugment:
         for k, op in OPS.items():
             self.rates[k] = tuple([np.ones(x, "f") for x in op.bins])
 
-    def rate_to_p(self, rate):
+    def rate_to_p(self, rate): # bin weights to probability
         p = rate + (1 - self.decay)  # Avoid to have all zero.
         p = p / p.max()
         p[p < self.th] = 0
@@ -98,8 +102,8 @@ class CTAugment:
             pil_img = OPS[op].f(pil_img, *args)
         return pil_img
 
-    def __call__(self, img):
-        policy = self.get_policy(probe=False)
+    def __call__(self, img, probe=True):
+        policy = self.get_policy(probe)
         return self.apply(img, policy)
 
 

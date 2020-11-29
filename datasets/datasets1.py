@@ -10,6 +10,7 @@ import numpy as np
 import ignite.distributed as idist
 import hydra
 import copy
+import json
 
 from torch.utils.data import Dataset, SequentialSampler
 from torch._six import int_classes as _int_classes
@@ -17,7 +18,7 @@ from torchvision import datasets
 from torchvision import transforms as T
 from torchvision.datasets.cifar import CIFAR100
 
-from augmentations.randaugment import RandAugment
+from augmentations.randaugment import RandAugment, CutoutAbs
 from augmentations.ctaugment import *
 # from test_dataloader import *
 
@@ -35,7 +36,7 @@ TRANSFORM_CIFAR = {
 
 STRONG_AUG = {
     'RA': RandAugment(n=2, m=10),
-    # 'CTA': CTAugment()
+    'CTA': CTAugment()
 }
 
 
@@ -76,6 +77,9 @@ class LoadDataset_Label_Unlabel(object):
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
                         std=TRANSFORM_CIFAR[self.name]['std'],)])
         # self.get_dataset()
+
+    def get_cta(self):
+        return self.strongaugment
 
     def get_dataset(self):
         rootdir =  hydra.utils.get_original_cwd()
@@ -118,10 +122,17 @@ class LoadDataset_Label_Unlabel(object):
             for i in range(3):
                 valid_dataset.indexs.remove(valid_idx_cls0[i])
                 valid_dataset.indexs.remove(valid_idx_cls1[i])
-
+        if isinstance(self.strongaugment, CTAugment):
+            ctaDataset = TransformedDataset(trainset, labeled_idx, transform=self.cta_probe_transform)
+            return labeledSet, unlabeledSet, valid_dataset, testset, ctaDataset
         return labeledSet, unlabeledSet, valid_dataset, testset
 
         # self.get_dataloader(train_sup_dataset, train_unsup_dataset, testset)
+    def cta_probe_transform(self, img):
+        policy = self.strongaugment.get_policy(probe=True)
+        probe = self.strongaugment.apply(img, policy)
+        probe = self.transform_test(CutoutAbs(probe, 16))
+        return probe, json.dumps(policy)
 
     def get_labeled_valid(self, cat_idx, num_per_class, valid_per_class=500):
         valid_idx = []

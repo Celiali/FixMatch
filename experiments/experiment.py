@@ -100,7 +100,7 @@ class FMExperiment(object):
 
     def update_cta(self, data_labelled, targets_labelled):
         self.model.eval()
-        with torch.no_grad:
+        with torch.no_grad():
             logits = self.forward(data_labelled)
             probs = torch.softmax(logits, dim=1)
             policies = self.cta.get_policy(probe=True)

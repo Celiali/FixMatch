@@ -108,6 +108,7 @@ class FMExperiment(object):
                 prob[t] -= 1
                 prob = torch.abs(prob).sum()
                 self.cta.update_rates(policy, 1.0 - 0.5 * prob.item())
+        self.model.train()
 
 
 
@@ -190,7 +191,7 @@ class FMExperiment(object):
 
             # update cta bin weights
             if self.cta:
-                self.update_cta(data_labelled, targets_labelled)
+                self.update_cta(inputs_labelled, targets_labelled)
 
             # updating ema model (params)
             if self.ema:

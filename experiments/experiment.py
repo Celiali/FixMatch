@@ -47,11 +47,16 @@ def get_cosine_schedule_with_warmup(optimizer,
 
 class NegEntropy(object):
     ### Import from https://github.com/LiJunnan1992/DivideMix/blob/d9d3058fa69a952463b896f84730378cdee6ec39/Train_cifar.py#L205
-    def __call__(self,outputs):
-        # probs = torch.softmax(outputs, dim=1)
-        # return torch.mean(torch.sum(probs.log()*probs, dim=1))
-        probs = torch.mean(torch.softmax(outputs, dim=1), dim=0) # 64*10 -> 1*10
-        return torch.sum(probs.log()*probs)
+    def __init__(self, equal_freq=False):
+        if equal_freq:
+            self.loss_func = lambda x: torch.sum(torch.mean(x, dim=0).log()* x)
+        else:
+            self.loss_func = lambda x: torch.mean(torch.sum(x.log()*x, dim=1)) 
+
+
+    def __call__(self,outputs, ):
+        probs = torch.softmax(outputs, dim=1)
+        return self.loss_func(probs)
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +98,7 @@ class FMExperiment(object):
             logger.info("[EMA] initial ")
 
         if self.params.neg_penalty:
-            self.conf_penalty = NegEntropy()
+            self.conf_penalty = NegEntropy(self.params.equal_freq)
 
     def forward(self, input):
         return self.model(input)

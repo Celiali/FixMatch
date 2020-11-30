@@ -1,0 +1,15 @@
+DATASET:
+  project_dir: './'
+  data_dir: 'data'
+  loading_data: 'LOAD_LABEL_UNLABEL' # ----LOAD_ORIGINAL'--- 'LOAD_LABEL_UNLABEL' ---
+  dataset: 'CIFAR10'
+  strongaugment: 'CTA'
+  label_num: 40
+  num_expand_x: 65536 # total number of labeled samples
+  mu: 7
+  batch_size: 64
+  num_workers: 4
+  batch_balanced: False
+  barely: False
+  add_noisy_label: False
+  both_strong: False # if apply two strong augmentations

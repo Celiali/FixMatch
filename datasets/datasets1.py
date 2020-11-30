@@ -70,7 +70,8 @@ class LoadDataset_Label_Unlabel(object):
         self.unlabeled_transform = TransformFix(
             mean=TRANSFORM_CIFAR[self.name]['mean'],
             std=TRANSFORM_CIFAR[self.name]['std'],
-            strong_aug_method=self.strongaugment)
+            strong_aug_method=self.strongaugment, 
+            both_strong=self.params.both_strong)
 
         self.transform_test = T.Compose([
             T.ToTensor(),
@@ -309,18 +310,21 @@ class BatchWeightedRandomSampler(Sampler):
 
 
 class TransformFix(object):
-    def __init__(self, mean, std, strong_aug_method):
-        self.weak = T.Compose([
-            T.RandomHorizontalFlip(),
-            T.RandomCrop(size=32,
-                         padding=int(32*0.125),
-                         padding_mode='reflect')])
+    def __init__(self, mean, std, strong_aug_method, both_strong=False):
         self.strong = T.Compose([
             T.RandomHorizontalFlip(),
             T.RandomCrop(size=32,
                          padding=int(32*0.125),
                          padding_mode='reflect'),
             strong_aug_method])
+        if both_strong:
+            self.weak = self.strong
+        else:
+            self.weak = T.Compose([
+                T.RandomHorizontalFlip(),
+                T.RandomCrop(size=32,
+                         padding=int(32*0.125),
+                         padding_mode='reflect')])
         self.normalize = T.Compose([
             T.ToTensor(),
             T.Normalize(mean=mean, std=std),
@@ -364,7 +368,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import torch
 
-    @hydra.main(config_path='../config', config_name='config')
+    @hydra.main(config_path='../dataset', config_name='config')
     def main(cfg: DictConfig) -> None:
         print(f"Current working directory : {os.getcwd()}")
         print(f"Orig working directory    : {hydra.utils.get_original_cwd()}")

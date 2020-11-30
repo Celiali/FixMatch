@@ -66,11 +66,12 @@ def setup_default_logging(params, string = 'Train', default_level=logging.INFO,
         level=default_level)
 
     # print
-    file_handler = logging.FileHandler(filename=os.path.join(output_dir, f'{time_str()}.log'), mode='a')
-    # console_handler = logging.StreamHandler(sys.stdout)
-    file_handler.setLevel(default_level)
-    file_handler.setFormatter(logging.Formatter(format))
-    logger.addHandler(file_handler)
+    # file_handler = logging.FileHandler(filename=os.path.join(output_dir, f'{time_str()}.log'), mode='a')
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(default_level)
+    console_handler.setFormatter(logging.Formatter(format))
+    # logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
     return logger
 

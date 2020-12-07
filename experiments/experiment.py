@@ -105,7 +105,11 @@ class FMExperiment(object):
 
     def update_cta(self, data): 
         (cta_imgs, policies), cat_targets = data # labeled
-        self.model.eval() # TODO: model or ema_model?
+        if self.ema:
+            model = self.ema_model
+        else:
+            model = self.model        
+        model.eval() # 
         with torch.no_grad():
             cta_imgs = cta_imgs.to(self.device)
             logits = self.forward(cta_imgs)

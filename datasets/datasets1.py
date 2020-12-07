@@ -54,7 +54,6 @@ class LoadDataset_Label_Unlabel(object):
         self.labeled_transform = T.Compose([
             T.RandomApply([
                 T.RandomCrop(size=32,
-                         # random shift 12.5% TODO: not random yet
                          padding=int(32*0.125),
                          padding_mode='reflect'),
                 ], p=0.5),

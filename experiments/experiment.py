@@ -49,9 +49,9 @@ class NegEntropy(object):
     ### Import from https://github.com/LiJunnan1992/DivideMix/blob/d9d3058fa69a952463b896f84730378cdee6ec39/Train_cifar.py#L205
     def __init__(self, equal_freq=False):
         if equal_freq:
-            self.loss_func = lambda x: torch.sum(torch.mean(x, dim=0).log()* x)
+            self.loss_func = lambda x: torch.sum((torch.mean(x, dim=0)+1e-5).log()* x)
         else:
-            self.loss_func = lambda x: torch.mean(torch.sum(x.log()*x, dim=1)) 
+            self.loss_func = lambda x: torch.mean(torch.sum((x+1e-5).log()*x, dim=1)) 
 
 
     def __call__(self,outputs, ):

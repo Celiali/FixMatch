@@ -109,7 +109,7 @@ class FMExperiment(object):
             model = self.ema_model
         else:
             model = self.model        
-        model.eval() # 
+        self.model.eval() # 
         with torch.no_grad():
             cta_imgs = cta_imgs.to(self.device)
             logits = self.forward(cta_imgs)

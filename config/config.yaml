@@ -29,6 +29,7 @@ EXPERIMENT:
   used_nesterov: True
   warmup: 0
   wdecay: 0.0005
+  clip: 1
 
   ema_used: True
   ema_decay: 0.999

@@ -2,11 +2,10 @@ import math
 import os
 import time
 import numpy as np
-import matplotlib.pyplot as plt
 from os.path import exists
 from os import mkdir
 import logging
-from numpy.core.multiarray import where
+
 
 import torch
 from torch import optim
@@ -14,7 +13,6 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
-import ignite.distributed as idist
 
 from utils.utils import accuracy,AverageMeter, save_cfmatrix, nl_loss
 from utils.ema import EMA
@@ -108,7 +106,7 @@ class FMExperiment(object):
         if self.ema:
             model = self.ema_model
         else:
-            model = self.model        
+            model = self.model
         self.model.eval() # 
         with torch.no_grad():
             cta_imgs = cta_imgs.to(self.device)
@@ -199,6 +197,7 @@ class FMExperiment(object):
             # compute gradient and backprop
             self.optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.params.clip)
             self.optimizer.step()
             self.scheduler.step()
 

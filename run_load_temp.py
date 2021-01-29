@@ -39,7 +39,7 @@ if __name__ == '__main__':
     logger.info(CONFIG)
 
     # checkpointslist = sorted(glob.glob('/Users/cil/Documents/DL_advanced/results/barely10/checkpoints/barely10/*.pth.tar'))
-    checkpointslist = sorted(glob.glob('/Users/cil/Documents/DL_advanced/results/eta_finished/checkpoints/exp150_eta_5/*.pth.tar'))
+    checkpointslist = sorted(glob.glob(CONFIG.EXPERIMENT.resume_checkpoints + '*.pth.tar'))
     # checkpointslist = sorted(glob.glob('/Users/cil/Documents/DL_advanced/results/reproduce/checkpoints/exp40_origin/*.pth.tar'))
     # checkpointslist = sorted(glob.glob('/Users/cil/Documents/DL_advanced/results/exp_noise/checkpoints/exp_1loss_noise/*.pth.tar'))
     for i in checkpointslist:

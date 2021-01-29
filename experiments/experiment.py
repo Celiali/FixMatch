@@ -2,11 +2,10 @@ import math
 import os
 import time
 import numpy as np
-import matplotlib.pyplot as plt
 from os.path import exists
 from os import mkdir
 import logging
-from numpy.core.multiarray import where
+
 
 import torch
 from torch import optim
@@ -14,7 +13,6 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
-import ignite.distributed as idist
 
 from utils.utils import accuracy,AverageMeter, save_cfmatrix, nl_loss
 from utils.ema import EMA
@@ -47,11 +45,17 @@ def get_cosine_schedule_with_warmup(optimizer,
 
 class NegEntropy(object):
     ### Import from https://github.com/LiJunnan1992/DivideMix/blob/d9d3058fa69a952463b896f84730378cdee6ec39/Train_cifar.py#L205
-    def __call__(self,outputs):
-        # probs = torch.softmax(outputs, dim=1)
-        # return torch.mean(torch.sum(probs.log()*probs, dim=1))
-        probs = torch.mean(torch.softmax(outputs, dim=1), dim=0) # 64*10 -> 1*10
-        return torch.sum(probs.log()*probs)
+    def __init__(self, equal_freq=False):
+        
+        if equal_freq:
+            self.loss_func = lambda x: torch.sum((torch.mean(x, dim=0)+1e-5).log()* x)
+        else:
+            self.loss_func = lambda x: torch.mean(torch.sum((x+1e-5).log()*x, dim=1)) 
+
+
+    def __call__(self,outputs, ):
+        probs = torch.softmax(outputs, dim=1)
+        return self.loss_func(probs)
 
 logger = logging.getLogger(__name__)
 
@@ -93,14 +97,18 @@ class FMExperiment(object):
             logger.info("[EMA] initial ")
 
         if self.params.neg_penalty:
-            self.conf_penalty = NegEntropy()
+            self.conf_penalty = NegEntropy(self.params.equal_freq)
 
     def forward(self, input):
         return self.model(input)
 
     def update_cta(self, data): 
         (cta_imgs, policies), cat_targets = data # labeled
-        self.model.eval() # TODO: model or ema_model?
+        if self.ema:
+            model = self.ema_model
+        else:
+            model = self.model
+        self.model.eval() # 
         with torch.no_grad():
             cta_imgs = cta_imgs.to(self.device)
             logits = self.forward(cta_imgs)
@@ -190,6 +198,7 @@ class FMExperiment(object):
             # compute gradient and backprop
             self.optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.params.clip)
             self.optimizer.step()
             self.scheduler.step()
 

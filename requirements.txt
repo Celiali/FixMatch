@@ -1,0 +1,15 @@
+easydict==1.9
+h5py==2.10.0
+hydra-core==1.0.4
+omegaconf==2.0.5
+pandas==1.2.0
+Pillow @ file:///opt/concourse/worker/volumes/live/991b9a87-3372-4acd-45f9-eaa52701f03c/volume/pillow_1603822262543/work
+pytorch-ignite==0.4.2
+PyYAML==5.3.1
+tensorboard==2.4.1
+tensorboard-plugin-wit==1.7.0
+tensorboardX==2.1
+torch==1.7.0
+torchaudio==0.7.0a0+ac17b64
+torchvision==0.8.1
+tqdm @ file:///tmp/build/80754af9/tqdm_1608922753628/work

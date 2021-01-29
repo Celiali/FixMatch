@@ -8,7 +8,7 @@ We reproduced the experiments on CIFAR-10 with 40, 250, 4000 labeled data and 50
 |                       |                | CIFAR-10      |               |
 | --------------------- | -------------- | ------------- | ------------- |
 | Method                | 40 labels      | 250labels     | 4000 labels   |
-| Official FixMatch(RA) | 13.81$\pm$3.37 | 5.07$\pm$0.65 | 4.26$\pm$0.05 |
+| Official FixMatch(RA) | 13.81±3.37 | 5.07±0.65 | 4.26±0.05 |
 | Ours(RA)              | 10.04          | 5.29          | 4.36          |
 
 

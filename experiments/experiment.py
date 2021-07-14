@@ -149,6 +149,9 @@ class FMExperiment(object):
             cta_iter = iter(self.cta_probe_dataloader)
         self.model.train()
         for batch_idx, (data_labelled, data_unlabelled) in enumerate(train_loader):
+
+            if batch_idx > 100:
+                break
             print(f'going to enter into batch {batch_idx}')
 
             inputs_labelled, targets_labelled = data_labelled

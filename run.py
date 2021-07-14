@@ -52,8 +52,8 @@ def main(CONFIG: DictConfig) -> None:
 
     cta = data.get_cta() if CONFIG.DATASET.strongaugment == 'CTA' else None
 
-    # build wideresnet
-    model = WRN_MODELS[CONFIG.MODEL.name](CONFIG.MODEL)
+    # build the simple CNN
+    model = WRN_MODELS['SimpleColorCNN'](CONFIG.MODEL)
     logger.info("[Model] Building model {}".format(CONFIG.MODEL.name))
 
     if CONFIG.EXPERIMENT.used_gpu:

@@ -149,6 +149,8 @@ class FMExperiment(object):
             cta_iter = iter(self.cta_probe_dataloader)
         self.model.train()
         for batch_idx, (data_labelled, data_unlabelled) in enumerate(train_loader):
+            print(f'going to enter into batch {batch_idx}')
+
             inputs_labelled, targets_labelled = data_labelled
             (inputs_unlabelled_weak, inputs_unlabelled_strong), targets_unlabelled = data_unlabelled
             # print('targets_labeled\n', [targets_labelled[np.where(targets_labelled==i)].shape for i in range(10)])
@@ -233,6 +235,8 @@ class FMExperiment(object):
             unlabelled_weak_top1_acc_meter.update(weak_top1_acc.item())
             unlabelled_weak_top5_acc_meter.update(weak_top5_acc.item())
             batch_time_meter.update(time.time() - start)
+
+            print(f'going done batch {batch_idx}')
 
             # save confusion matrix every 100 steps
             if self.save_cfmatrix and batch_idx % self.params.save_matrix_every == 0: #                 

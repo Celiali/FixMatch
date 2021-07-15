@@ -57,20 +57,16 @@ def main(CONFIG: DictConfig) -> None:
 
     cta = data.get_cta() if CONFIG.DATASET.strongaugment == 'CTA' else None
 
-    # build the simple CNN
-    # model = WRN_MODELS['SimpleColorCNN'](CONFIG.MODEL)
-
-    # build wideresnet
-    model = WRN_MODELS[CONFIG.MODEL.name](CONFIG.MODEL)
-
     logger.info("[Model] Building model {}".format(CONFIG.MODEL.name))
 
     trainset, testset = data.get_vanila_dataset()
 
     num_train = len(trainset)
     num_each_outer_fold = num_train // K_OUTER_FOLD
+    leftover_outer = num_train - num_each_outer_fold * K_OUTER_FOLD
 
-    outer_folds = torch.utils.data.random_split(trainset, [num_each_outer_fold] * K_OUTER_FOLD)
+    outer_folds = torch.utils.data.random_split(trainset, [num_each_outer_fold] * (K_OUTER_FOLD - 1) +
+                                                [num_each_outer_fold + leftover_outer])
 
     for curr_outer_fold_idx in range(K_OUTER_FOLD):
         print(f'Entering outer fold {curr_outer_fold_idx}')
@@ -78,11 +74,21 @@ def main(CONFIG: DictConfig) -> None:
         outer_fold_train_dataset = ConcatDataset([dtst for idx, dtst in enumerate(outer_folds) if idx != curr_outer_fold_idx])
         outer_fold_val_dataset = outer_folds[curr_outer_fold_idx]
 
-        num_each_inner_fold = len(outer_fold_train_dataset) // K_INNER_FOLD
-        inner_folds = torch.utils.data.random_split(outer_fold_train_dataset, [num_each_inner_fold] * K_INNER_FOLD)
+        num_inner = len(outer_fold_train_dataset)
+        num_each_inner_fold = num_inner // K_INNER_FOLD
+        leftover_inner = num_inner - num_each_inner_fold * K_INNER_FOLD
+
+        inner_folds = torch.utils.data.random_split(outer_fold_train_dataset, [num_each_inner_fold] * (K_INNER_FOLD - 1)
+                                                    + [num_each_inner_fold + leftover_inner])
         best_model, best_model_top1_acc = None, None
         for curr_inner_fold_idx in range(K_INNER_FOLD):
             print(f'Entering inner fold {curr_inner_fold_idx}')
+
+            # build the simple CNN
+            # model = WRN_MODELS['SimpleColorCNN'](CONFIG.MODEL)
+
+            # build wideresnet
+            model = WRN_MODELS[CONFIG.MODEL.name](CONFIG.MODEL)
 
             if CONFIG.EXPERIMENT.used_gpu:
                 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

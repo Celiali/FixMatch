@@ -4,8 +4,10 @@ import sys
 from collections import defaultdict
 
 from torch.utils.data.sampler import Sampler
+
 sys.path.append(os.getcwd())
 from PIL import Image
+import torch
 import numpy as np
 import ignite.distributed as idist
 import hydra
@@ -19,6 +21,7 @@ from torchvision import transforms as T
 from torchvision.datasets.cifar import CIFAR100
 from augmentations.randaugment import RandAugment, CutoutAbs
 from augmentations.ctaugment import *
+
 # from test_dataloader import *
 
 logger = logging.getLogger(__name__)
@@ -56,22 +59,52 @@ class CombineDataset(Dataset):
         Returns:
             tuple: (image, target) where target is index of the target class.
         """
-        img, target = self.data[index], self.targets[index]
-
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
-        img = Image.fromarray(img)
-
-        if self.transform is not None:
-            img = self.transform(img)
-
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-
-        return img, target
+        return self.data[index], self.targets[index]
 
     def __len__(self) -> int:
         return len(self.data)
+
+
+class SubsetDataset(Dataset):
+    def __init__(self, subset, transform, target_transform):
+        self.subset = subset
+        self.targets = []
+        self.data = []
+
+        for x, y in subset:
+            self.targets.append(x)
+            self.data.append(y)
+
+        self.transform = transform
+        self.target_transform = target_transform
+
+    def __getitem__(self, index: int):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        return self.data[index], self.targets[index]
+
+    def __len__(self) -> int:
+        return len(self.subset)
+
+
+class KFoldDataset:
+    def __init__(self, dataset_to_kfold, k):
+        super(KFoldDataset, self).__init__()
+        self.transform = dataset_to_kfold.transform
+        self.target_transform = dataset_to_kfold.target_transform
+
+        num_dataset = len(dataset_to_kfold)
+        num_each_fold = num_dataset // k
+        leftover = num_dataset - num_each_fold * k
+
+        self.folds = torch.utils.data.random_split(dataset_to_kfold, [num_each_fold] * (k - 1) +
+                                                   [num_each_fold + leftover])
+        self.folds = [SubsetDataset(fld_subset, self.transform, self.target_transform) for fld_subset in self.folds]
 
 
 class LoadDataset_Label_Unlabel(object):
@@ -84,32 +117,31 @@ class LoadDataset_Label_Unlabel(object):
 
         assert self.name in ['CIFAR10', 'CIFAR100'], f"[!] Dataset Name is wrong, \
                                                             expected: CIFAR10, CIFAR100  \
-                                                            received: {self.name }"
+                                                            received: {self.name}"
         self.labeled_transform = T.Compose([
             T.RandomApply([
                 T.RandomCrop(size=32,
-                         padding=int(32*0.125),
-                         padding_mode='reflect'),
-                ], p=0.5),
+                             padding=int(32 * 0.125),
+                             padding_mode='reflect'),
+            ], p=0.5),
             T.RandomHorizontalFlip(),  # random flip with p=0.5
             T.ToTensor(),
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
-                        std=TRANSFORM_CIFAR[self.name]['std'],)])
+                        std=TRANSFORM_CIFAR[self.name]['std'], )])
         ########## Correction ##########
         ########## paper lack of clarification ##########
         # The paper didn't clearly show the probability of translation, I set p=0.5 here
-        
 
         self.unlabeled_transform = TransformFix(
             mean=TRANSFORM_CIFAR[self.name]['mean'],
             std=TRANSFORM_CIFAR[self.name]['std'],
-            strong_aug_method=self.strongaugment, 
+            strong_aug_method=self.strongaugment,
             both_strong=self.params.both_strong)
 
         self.transform_test = T.Compose([
             T.ToTensor(),
             T.Normalize(mean=TRANSFORM_CIFAR[self.name]['mean'],
-                        std=TRANSFORM_CIFAR[self.name]['std'],)])
+                        std=TRANSFORM_CIFAR[self.name]['std'], )])
         # self.get_dataset()
 
     def get_cta(self):
@@ -147,9 +179,9 @@ class LoadDataset_Label_Unlabel(object):
             ctaDataset = TransformedDataset(dataset, labeled_idx, transform=self.cta_probe_transform)
             return labeledSet, unlabeledSet, valid_dataset, ctaDataset
         return labeledSet, unlabeledSet, valid_dataset
-    
+
     def get_vanila_dataset(self):
-        rootdir =  hydra.utils.get_original_cwd()
+        rootdir = hydra.utils.get_original_cwd()
         data_dir = os.path.join(rootdir, self.datapath, 'cifar-%s-batches-py' % self.name[5:])
         downloadFlag = not os.path.exists(data_dir)
 
@@ -163,7 +195,7 @@ class LoadDataset_Label_Unlabel(object):
         return trainset, testset
 
     def get_dataset(self):
-        rootdir =  hydra.utils.get_original_cwd()
+        rootdir = hydra.utils.get_original_cwd()
         data_dir = os.path.join(rootdir, self.datapath, 'cifar-%s-batches-py' % self.name[5:])
         downloadFlag = not os.path.exists(data_dir)
 
@@ -182,21 +214,20 @@ class LoadDataset_Label_Unlabel(object):
         # apply transforms
         labeledSet, unlabeledSet, valid_dataset = self.apply_transform(labeled_idx, unlabeled_idx, valid_idx, trainset)
 
-        
         if self.params.add_noisy_label:
-            labeledSet.dataset = copy.deepcopy(labeledSet.dataset) # to keep unlabledSet unchange
+            labeledSet.dataset = copy.deepcopy(labeledSet.dataset)  # to keep unlabledSet unchange
             unique_idx_labeled = set(labeledSet.indexs)
-            unique_idx_valid = set(valid_dataset.indexs) 
+            unique_idx_valid = set(valid_dataset.indexs)
 
-            valid_idx_cls0 = [ i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 0]
-            valid_idx_cls1 = [ i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 1]
+            valid_idx_cls0 = [i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 0]
+            valid_idx_cls1 = [i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 1]
 
-            sampled_idx_cls2 = [ i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 2]
-            sampled_idx_cls3 = [ i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 3]
+            sampled_idx_cls2 = [i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 2]
+            sampled_idx_cls3 = [i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 3]
 
             # replacing 3 images
-            labeledSet.dataset.data[sampled_idx_cls2[:3]] = valid_dataset.dataset.data[valid_idx_cls0[:3]] 
-            labeledSet.dataset.data[sampled_idx_cls3[:3]] = valid_dataset.dataset.data[valid_idx_cls1[:3]] 
+            labeledSet.dataset.data[sampled_idx_cls2[:3]] = valid_dataset.dataset.data[valid_idx_cls0[:3]]
+            labeledSet.dataset.data[sampled_idx_cls3[:3]] = valid_dataset.dataset.data[valid_idx_cls1[:3]]
 
             # removing the three indexs
             for i in range(3):
@@ -208,6 +239,7 @@ class LoadDataset_Label_Unlabel(object):
         return labeledSet, unlabeledSet, valid_dataset, testset
 
         # self.get_dataloader(train_sup_dataset, train_unsup_dataset, testset)
+
     def cta_probe_transform(self, img):
         policy = self.strongaugment.get_policy(probe=True)
         probe = self.strongaugment.apply(img, policy)
@@ -218,8 +250,8 @@ class LoadDataset_Label_Unlabel(object):
         valid_idx = []
         labeled_idx = []
         for idxs in cat_idx:
-            idx = np.random.choice(idxs, num_per_class+valid_per_class, replace=False)
-            labeled_idx= np.concatenate((labeled_idx, idx[:num_per_class]), axis=None)
+            idx = np.random.choice(idxs, num_per_class + valid_per_class, replace=False)
+            labeled_idx = np.concatenate((labeled_idx, idx[:num_per_class]), axis=None)
             valid_idx = np.concatenate((valid_idx, idx[num_per_class:]), axis=None)
         # the default value is "replace = True" for np.random.choice, but we don't want to sample the same image twice
         # in labeled data. Thus, I add replace = False.
@@ -229,7 +261,7 @@ class LoadDataset_Label_Unlabel(object):
         valid_idx = []
         labeled_idx = []
 
-        selected_idx =[4255, 6446, 8580, 11759, 12598, 29349, 29433, 33759, 35345, 38639]
+        selected_idx = [4255, 6446, 8580, 11759, 12598, 29349, 29433, 33759, 35345, 38639]
         for idxs in cat_idx:
             for j in range(len(selected_idx)):
                 s_idx = selected_idx[j]
@@ -243,31 +275,31 @@ class LoadDataset_Label_Unlabel(object):
         # in labeled data. Thus, I add replace = False.
         return list(labeled_idx.astype(int)), list(valid_idx.astype(int))
 
-    def sampling(self, num_expand_x, trainset): # num_expand_x: 2^16 #expected total number of labeled training samples
+    def sampling(self, num_expand_x, trainset):  # num_expand_x: 2^16 #expected total number of labeled training samples
         num_per_class = self.params.label_num // self.num_classes
         labels = np.array(trainset.targets)
 
         # sample labeled
-        categorized_idx = [list(np.where(labels == i)[0]) for i in range(self.num_classes)] #[[], [],]
+        categorized_idx = [list(np.where(labels == i)[0]) for i in range(self.num_classes)]  # [[], [],]
 
         # Get labeled data and validation data index
         # The type of labeled_idx should be "list"
         if self.params.label_num == 10 and self.params.barely:
             labeled_idx, valid_idx = self.get_labeled_valid_barely(categorized_idx, num_per_class)
         else:
-            labeled_idx , valid_idx= self.get_labeled_valid(categorized_idx,num_per_class)
+            labeled_idx, valid_idx = self.get_labeled_valid(categorized_idx, num_per_class)
 
         # Update the training data index since we will not use validation set
         unlabeled_idx = np.array(np.setdiff1d(np.arange(labels.size), np.array(valid_idx)))
 
         # expand the number of labeled to num_expand_x, unlabeled to num_expand_x * 7
         exapand_labeled = num_expand_x // len(labeled_idx)  # len(labeled_idx) = 40 00
-        exapand_unlabled = num_expand_x * self.params.mu // unlabeled_idx.size #  labels.size
+        exapand_unlabled = num_expand_x * self.params.mu // unlabeled_idx.size  # labels.size
 
         # labels.size = 50 000, all the samples are used in the unlabel data set
 
         labeled_idx = labeled_idx * exapand_labeled
-        unlabeled_idx = list(unlabeled_idx) * exapand_unlabled #
+        unlabeled_idx = list(unlabeled_idx) * exapand_unlabled  #
 
         if len(labeled_idx) < num_expand_x:
             diff = num_expand_x - len(labeled_idx)
@@ -320,14 +352,16 @@ class LoadDataset_Label_Unlabel(object):
                 batch_size=self.params.batch_size,
             )
 
-        self.loader['labeled'] = idist.auto_dataloader(train_sup_dataset, **kwargs, 
-                batch_sampler= BatchWeightedRandomSampler(train_sup_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,
-        
-        )
+        self.loader['labeled'] = idist.auto_dataloader(train_sup_dataset, **kwargs,
+                                                       batch_sampler=BatchWeightedRandomSampler(train_sup_dataset,
+                                                                                                batch_size=self.params.batch_size) if self.params.batch_balanced else None,
+
+                                                       )
 
         self.loader['unlabeled'] = idist.auto_dataloader(train_unsup_dataset, **kwargs,
-            batch_sampler= BatchWeightedRandomSampler(train_unsup_dataset, batch_size=self.params.batch_size) if self.params.batch_balanced else None,
-        )
+                                                         batch_sampler=BatchWeightedRandomSampler(train_unsup_dataset,
+                                                                                                  batch_size=self.params.batch_size) if self.params.batch_balanced else None,
+                                                         )
 
         self.loader['test'] = idist.auto_dataloader(testset, **kwargs, sampler=SequentialSampler(testset))
         return self.loader
@@ -335,7 +369,8 @@ class LoadDataset_Label_Unlabel(object):
 
 class BatchWeightedRandomSampler(Sampler):
     '''Samples elements for a batch with given probabilites of each element'''
-    def __init__(self,  data_source, batch_size, drop_last=False):
+
+    def __init__(self, data_source, batch_size, drop_last=False):
         if not isinstance(batch_size, _int_classes) or isinstance(batch_size, bool) or \
                 batch_size <= 0:
             raise ValueError("batch_size should be a positive integer value, "
@@ -349,8 +384,8 @@ class BatchWeightedRandomSampler(Sampler):
 
     def __iter__(self):
         nclass = max(self.targets) + 1
-        sample_distrib = np.array([len(np.where(self.targets==i)[0]) for i in range(nclass)])
-        sample_distrib = sample_distrib/sample_distrib.max()
+        sample_distrib = np.array([len(np.where(self.targets == i)[0]) for i in range(nclass)])
+        sample_distrib = sample_distrib / sample_distrib.max()
 
         class_id = defaultdict(list)
         for idx, c in enumerate(self.targets):
@@ -368,7 +403,7 @@ class BatchWeightedRandomSampler(Sampler):
         label = []
         for i in range(len(self.targets)):
             c = np.argmax(sample_distrib - npos / max(npos.max(), 1))
-            label.append(class_id[c][npos[c]]) # the indexs of examples
+            label.append(class_id[c][npos[c]])  # the indexs of examples
             npos[c] += 1
 
         batch = []
@@ -385,7 +420,6 @@ class BatchWeightedRandomSampler(Sampler):
             return len(self.sampler) // self.batch_size
         else:
             return (len(self.sampler) + self.batch_size - 1) // self.batch_size
-    
 
 
 class TransformFix(object):
@@ -393,7 +427,7 @@ class TransformFix(object):
         self.strong = T.Compose([
             T.RandomHorizontalFlip(),
             T.RandomCrop(size=32,
-                         padding=int(32*0.125),
+                         padding=int(32 * 0.125),
                          padding_mode='reflect'),
             strong_aug_method])
         if both_strong:
@@ -402,13 +436,13 @@ class TransformFix(object):
             self.weak = T.Compose([
                 T.RandomHorizontalFlip(),
                 T.RandomCrop(size=32,
-                         padding=int(32*0.125),
-                         padding_mode='reflect')])
+                             padding=int(32 * 0.125),
+                             padding_mode='reflect')])
         self.normalize = T.Compose([
             T.ToTensor(),
             T.Normalize(mean=mean, std=std),
             # T.RandomErasing(scale=(0.02, 0.15), value=127), # cutout
-            ]  
+        ]
         )
 
     def __call__(self, x):
@@ -424,7 +458,7 @@ class TransformedDataset(Dataset):
         self.target_transform = target_transform
         self.indexs = indexs
         # if indexs is not None:
-        #     self.dataset.data = dataset.data[indexs] 
+        #     self.dataset.data = dataset.data[indexs]
         #     self.dataset.targets = np.array(self.dataset.targets)[indexs]
 
     def __getitem__(self, i):
@@ -447,18 +481,20 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import torch
 
+
     @hydra.main(config_path='../dataset', config_name='config')
     def main(cfg: DictConfig) -> None:
         print(f"Current working directory : {os.getcwd()}")
         print(f"Orig working directory    : {hydra.utils.get_original_cwd()}")
-        def restore_stats(img): 
+
+        def restore_stats(img):
             mean = TRANSFORM_CIFAR[cfg.DATASET.dataset]['mean']
             mean = torch.tensor(mean).unsqueeze(dim=1).unsqueeze(dim=1)
             std = TRANSFORM_CIFAR[cfg.DATASET.dataset]['std']
             std = torch.tensor(std).unsqueeze(dim=1).unsqueeze(dim=1)
             img = img * std + mean
             return T.ToPILImage()(img).convert('RGB')
-        
+
         def showImg(dataset: TransformedDataset, name, index=None):
             idx = index or np.random.randint(0, len(dataset))
             plt.figure(idx)
@@ -467,7 +503,7 @@ if __name__ == '__main__':
                 plt.title(name)
             else:
                 raw_img, _ = dataset.dataset[dataset.indexs[idx]]
-                transformed_img, _ = dataset[idx] # transformed img       
+                transformed_img, _ = dataset[idx]  # transformed img
 
                 if isinstance(transformed_img, tuple):
                     im = [restore_stats(img) for img in transformed_img]
@@ -480,7 +516,7 @@ if __name__ == '__main__':
                     plt.subplot(133)
                     plt.imshow(im[1])
                     plt.title('strongly augmented (%s)' %
-                            cfg.DATASET.strongaugment)
+                              cfg.DATASET.strongaugment)
                 else:
                     transformed_img = restore_stats(transformed_img)
                     plt.subplot(121)
@@ -489,11 +525,13 @@ if __name__ == '__main__':
                     plt.subplot(122)
                     plt.imshow(transformed_img)
                     plt.title(name)
-        
+
         data = LoadDataset_Label_Unlabel(cfg.DATASET)
         dataset = data.get_dataset()
         for name, ds in zip(['train labeled', 'train unlabled', 'test'], dataset):
             showImg(ds, name, index=0)
         plt.show()
         # test_dataloader(data,cfg,TRANSFORM_CIFAR)
+
+
     main()

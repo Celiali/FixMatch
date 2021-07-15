@@ -150,7 +150,7 @@ class FMExperiment(object):
         self.model.train()
         for batch_idx, (data_labelled, data_unlabelled) in enumerate(train_loader):
 
-            if batch_idx > 100:
+            if batch_idx > 10:
                 break
             print(f'going to enter into batch {batch_idx}')
 

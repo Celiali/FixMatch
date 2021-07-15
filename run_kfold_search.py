@@ -65,8 +65,9 @@ def main(CONFIG: DictConfig) -> None:
     num_each_outer_fold = num_train // K_OUTER_FOLD
     leftover_outer = num_train - num_each_outer_fold * K_OUTER_FOLD
 
-    outer_folds = torch.utils.data.random_split(trainset, [num_each_outer_fold] * (K_OUTER_FOLD - 1) +
-                                                [num_each_outer_fold + leftover_outer])
+    outer_folds = KFoldDataset(trainset, K_OUTER_FOLD).folds
+    #outer_folds = torch.utils.data.random_split(trainset, [num_each_outer_fold] * (K_OUTER_FOLD - 1) +
+    #                                            [num_each_outer_fold + leftover_outer])
 
     for curr_outer_fold_idx in range(K_OUTER_FOLD):
         print(f'Entering outer fold {curr_outer_fold_idx}')
@@ -78,8 +79,9 @@ def main(CONFIG: DictConfig) -> None:
         num_each_inner_fold = num_inner // K_INNER_FOLD
         leftover_inner = num_inner - num_each_inner_fold * K_INNER_FOLD
 
-        inner_folds = torch.utils.data.random_split(outer_fold_train_dataset, [num_each_inner_fold] * (K_INNER_FOLD - 1)
-                                                    + [num_each_inner_fold + leftover_inner])
+        #inner_folds = torch.utils.data.random_split(outer_fold_train_dataset, [num_each_inner_fold] * (K_INNER_FOLD - 1)
+        #                                            + [num_each_inner_fold + leftover_inner])
+        inner_folds = KFoldDataset(outer_fold_train_dataset, K_INNER_FOLD).folds
         best_model, best_model_top1_acc = None, None
         for curr_inner_fold_idx in range(K_INNER_FOLD):
             print(f'Entering inner fold {curr_inner_fold_idx}')

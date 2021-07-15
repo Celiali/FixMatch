@@ -152,7 +152,6 @@ class FMExperiment(object):
 
             if batch_idx > 10:
                 break
-            print(f'going to enter into batch {batch_idx}')
 
             inputs_labelled, targets_labelled = data_labelled
             (inputs_unlabelled_weak, inputs_unlabelled_strong), targets_unlabelled = data_unlabelled

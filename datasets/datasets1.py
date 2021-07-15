@@ -5,19 +5,18 @@ from collections import defaultdict
 
 from torch.utils.data.sampler import Sampler
 sys.path.append(os.getcwd())
-
+from PIL import Image
 import numpy as np
 import ignite.distributed as idist
 import hydra
 import copy
 import json
-
+import itertools
 from torch.utils.data import Dataset, SequentialSampler
 from torch._six import int_classes as _int_classes
 from torchvision import datasets
 from torchvision import transforms as T
 from torchvision.datasets.cifar import CIFAR100
-
 from augmentations.randaugment import RandAugment, CutoutAbs
 from augmentations.ctaugment import *
 # from test_dataloader import *
@@ -38,6 +37,41 @@ STRONG_AUG = {
     'RA': RandAugment(n=2, m=10),
     'CTA': CTAugment()
 }
+
+
+class CombineDataset(Dataset):
+    def __init__(self, datasets_to_combine):
+        super(CombineDataset, self).__init__()
+
+        self.transform = datasets_to_combine[0].transform
+        self.target_transform = datasets_to_combine[0].target_transform
+        self.targets = list(itertools.chain(*[dt.targets for dt in datasets_to_combine]))
+        self.data = list(itertools.chain(*[dt.data for dt in datasets_to_combine]))
+
+    def __getitem__(self, index: int):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.data[index], self.targets[index]
+
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = Image.fromarray(img)
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target
+
+    def __len__(self) -> int:
+        return len(self.data)
 
 
 class LoadDataset_Label_Unlabel(object):

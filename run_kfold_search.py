@@ -71,7 +71,7 @@ def main(CONFIG: DictConfig) -> None:
     for curr_outer_fold_idx in range(K_OUTER_FOLD):
         print(f'Entering outer fold {curr_outer_fold_idx}')
         # leave one out
-        outer_fold_train_dataset = ConcatDataset([dtst for idx, dtst in enumerate(outer_folds) if idx != curr_outer_fold_idx])
+        outer_fold_train_dataset = CombineDataset([dtst for idx, dtst in enumerate(outer_folds) if idx != curr_outer_fold_idx])
         outer_fold_val_dataset = outer_folds[curr_outer_fold_idx]
 
         num_inner = len(outer_fold_train_dataset)
@@ -97,7 +97,7 @@ def main(CONFIG: DictConfig) -> None:
             experiment = EXPERIMENT[CONFIG.EXPERIMENT.name](
                 model, CONFIG.EXPERIMENT, cta)
 
-            inner_fold_train_dataset = ConcatDataset([dtst for idx, dtst in enumerate(inner_folds) if idx != curr_inner_fold_idx])
+            inner_fold_train_dataset = CombineDataset([dtst for idx, dtst in enumerate(inner_folds) if idx != curr_inner_fold_idx])
             inner_fold_val_dataset = inner_folds[curr_inner_fold_idx]
 
             if cta:

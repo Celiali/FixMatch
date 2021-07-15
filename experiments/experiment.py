@@ -312,7 +312,7 @@ class FMExperiment(object):
             self.ema_model.apply_shadow()
             logger.info("[Testing with EMA] apply shadow")
 
-        test_loss, top1_acc, top5_acc= self.test_step()
+        test_loss, top1_acc, top5_acc = self.test_step()
         if self.ema:
             logger.info(
                 "[Testing(EMA)] testing_loss: {:.4f}, test Top1 acc:{}, test Top5 acc: {}".format(test_loss,top1_acc,top5_acc))
@@ -324,6 +324,8 @@ class FMExperiment(object):
         if self.ema:
             self.ema_model.restore()
             logger.info("[EMA] restore ")
+
+        return test_loss, top1_acc, top5_acc
 
     def fitting(self):
         # initial tensorboard

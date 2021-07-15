@@ -81,6 +81,53 @@ class LoadDataset_Label_Unlabel(object):
     def get_cta(self):
         return self.strongaugment
 
+    def vanilla_dataset_to_unlabeled(self, dataset):
+        self.num_classes = max(dataset.targets) + 1
+
+        # sampling labeled and unlabeled data
+        labeled_idx, unlabeled_idx, valid_idx = self.sampling(self.params.num_expand_x, dataset)
+
+        # apply transforms
+        labeledSet, unlabeledSet, valid_dataset = self.apply_transform(labeled_idx, unlabeled_idx, valid_idx, dataset)
+
+        if self.params.add_noisy_label:
+            labeledSet.dataset = copy.deepcopy(labeledSet.dataset)  # to keep unlabledSet unchange
+            unique_idx_labeled = set(labeledSet.indexs)
+            unique_idx_valid = set(valid_dataset.indexs)
+
+            valid_idx_cls0 = [i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 0]
+            valid_idx_cls1 = [i for i in unique_idx_valid if valid_dataset.dataset.targets[i] == 1]
+
+            sampled_idx_cls2 = [i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 2]
+            sampled_idx_cls3 = [i for i in unique_idx_labeled if labeledSet.dataset.targets[i] == 3]
+
+            # replacing 3 images
+            labeledSet.dataset.data[sampled_idx_cls2[:3]] = valid_dataset.dataset.data[valid_idx_cls0[:3]]
+            labeledSet.dataset.data[sampled_idx_cls3[:3]] = valid_dataset.dataset.data[valid_idx_cls1[:3]]
+
+            # removing the three indexs
+            for i in range(3):
+                valid_dataset.indexs.remove(valid_idx_cls0[i])
+                valid_dataset.indexs.remove(valid_idx_cls1[i])
+        if isinstance(self.strongaugment, CTAugment):
+            ctaDataset = TransformedDataset(dataset, labeled_idx, transform=self.cta_probe_transform)
+            return labeledSet, unlabeledSet, valid_dataset, ctaDataset
+        return labeledSet, unlabeledSet, valid_dataset
+    
+    def get_vanila_dataset(self):
+        rootdir =  hydra.utils.get_original_cwd()
+        data_dir = os.path.join(rootdir, self.datapath, 'cifar-%s-batches-py' % self.name[5:])
+        downloadFlag = not os.path.exists(data_dir)
+
+        try:
+            trainset = datasets.__dict__[self.name](data_dir, train=True, download=downloadFlag)
+            testset = datasets.__dict__[self.name](data_dir, train=False, transform=self.transform_test, download=False)
+        except:
+            raise IOError(f'Dataset {self.name} not found in cwd {data_dir}')
+
+        logger.info(f"Dataset: {self.name}")
+        return trainset, testset
+
     def get_dataset(self):
         rootdir =  hydra.utils.get_original_cwd()
         data_dir = os.path.join(rootdir, self.datapath, 'cifar-%s-batches-py' % self.name[5:])
@@ -93,7 +140,6 @@ class LoadDataset_Label_Unlabel(object):
             raise IOError(f'Dataset {self.name} not found in cwd {data_dir}')
 
         logger.info(f"Dataset: {self.name}")
-
         self.num_classes = max(testset.targets) + 1
 
         # sampling labeled and unlabeled data
